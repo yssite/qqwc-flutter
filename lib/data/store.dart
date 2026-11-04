@@ -26,7 +26,7 @@ class AppSettings {
     this.autoLocate = true,
     this.permissionsAsked = false,
     this.verboseLog = false,
-    this.schema = 2,
+    this.schema = 3,
   });
 
   bool autoMatch;
@@ -86,6 +86,8 @@ class AppSettings {
         autoLocate: j['autoLocate'] as bool? ?? true,
         permissionsAsked: j['permissionsAsked'] as bool? ?? false,
         verboseLog: j['verboseLog'] as bool? ?? false,
+        // 旧数据没有该字段 → 0，触发下面的迁移（清掉旧版自动写入的运营商）
+        schema: (j['schema'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -113,11 +115,11 @@ class SettingsStore {
       settings.deviceId = 'TS${randomHex(16)}';
       await save(settings);
     }
-    // v2：旧版本会把「出口 IP 识别出的运营商」写回偏好，切卡后一直沿用旧运营商。
-    // 升级时清掉一次，让运营商重新跟随实时出口 IP / 用户手动选择。
-    if (settings.schema < 2) {
+    // v3：旧版本会把「出口 IP 识别出的运营商」写回偏好，切卡后一直沿用旧运营商。
+    // 升级时清掉一次（无论之前是 schema 0 还是 2），让运营商重新跟随数据卡 / 用户手动选择。
+    if (settings.schema < 3) {
       settings.oper = '';
-      settings.schema = 2;
+      settings.schema = 3;
       await save(settings);
     }
     return settings;
@@ -222,6 +224,15 @@ class NetInfoService {
     if (s.contains('教育') || upper.contains('CERNET')) return '教育网';
     if (s.contains('广电') || upper.contains('BROADCAST')) return '广电网';
     return '';
+  }
+
+  /// SIM 卡名 → 测速节点口径的运营商。
+  /// 广电（46015）借用移动的基站与核心网，节点按移动匹配即可。
+  static String simOperOf(String simName) {
+    final s = simName.replaceAll(' ', '');
+    if (s.isEmpty) return '';
+    if (s.contains('广电') || s.toUpperCase().contains('BROADCAST')) return '移动';
+    return operOf(simName);
   }
 
   static Future<NetInfo> detect() async {

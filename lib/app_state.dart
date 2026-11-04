@@ -244,11 +244,11 @@ class AppState extends ChangeNotifier {
   String get effectiveOper {
     if (settings.oper.isNotEmpty) return settings.oper;
     if (link.isCellular) {
-      final simOper = NetInfoService.operOf(link.operatorName);
+      final simOper = NetInfoService.simOperOf(link.operatorName);
       if (simOper.isNotEmpty) return simOper;
     }
     if (netInfo.oper.isNotEmpty) return netInfo.oper;
-    return NetInfoService.operOf(link.operatorName);
+    return NetInfoService.simOperOf(link.operatorName);
   }
 
   /// 芯片上显示的运营商文案：`电信 · 卡 2`
