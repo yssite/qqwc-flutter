@@ -3,7 +3,12 @@
 对 CAICT「全球网测」Android 4.4.8 的公开测速协议做完整还原，用 **Flutter + Material 3 Expressive**
 重写的移动端测速工具。无广告、无账号，结果只保存在本机；全局深色，仪表盘参考 Speedtest 但保留 Material 3 语言。
 
+- 最新版本：**v1.3.5** · Android 7.0+（minSdk 24 / targetSdk 36）
+- 技术栈：Flutter 3.47 / Dart 3.13 · Material 3 Expressive · Kotlin 原生通道采集链路信息
+- 更新方式：内置「检查更新」，按 ABI 选包 + 分段并发下载，直接拉起系统安装器
+
 [![Release](https://img.shields.io/github/v/release/yssite/qqwc-flutter)](https://github.com/yssite/qqwc-flutter/releases)
+[![Changelog](https://img.shields.io/badge/CHANGELOG-查看-blue)](CHANGELOG.md)
 
 | 测速中 | 结果 | 设置 |
 |---|---|---|
@@ -24,14 +29,14 @@
 
 | 模块 | 说明 |
 |---|---|
-| 一键测速 | 自动匹配节点 → TCP 延迟 → 下行 8 连接 → 上行 4 连接 → 100 分制评分 |
+| 一键测速 | 自动匹配节点 → TCP 延迟 → 下行 8 连接 → 上行 4 连接，连接断开自动重连；100 分制评分 |
 | 实时仪表 | 指针仪表盘（厚渐变外环、只留数值）、实时曲线、JetBrains Mono 读数 |
-| 网络标识 | `移动 · 5G n41`、`电信 · 4G B1`、`5G WiFi6`；跟随当前数据卡，切卡 12 秒内更新 |
+| 网络标识 | `移动 · 5G n41`、`电信 · 4G B1`、`5G WiFi6`；跟随当前数据卡，切卡/切 Wi‑Fi 即时更新 |
 | 定位匹配 | 授权后按定位省份选节点，运营商取数据卡（Wi‑Fi 时取出口 IP） |
 | 节点库 | 内置 596 节点，搜索 / 省份 / 运营商筛选，批量测延迟 |
-| 记录 | 本地持久化、详情曲线、滑动删除、CSV 导出 |
-| 诊断 | 连接情况、出口 IP、TCP 延迟、DNS、多目标连通质量、日志导出 |
-| 更新 | 启动自检 + 设置页检查 GitHub Release，多线程分段下载后直接拉起系统安装器 |
+| 记录 | 本地持久化、行内网络胶囊、详情曲线、滑动删除、CSV 导出 |
+| 诊断 | 连接情况、出口 IP、TCP 延迟、DNS、多目标连通质量、运行日志导出 |
+| 更新 | 启动自检 + 设置页检查 GitHub Release，多线程分段下载（支持镜像）后拉起系统安装器 |
 | 无障碍 | 仪表盘、列表行、服务器卡均带语义标签，底栏可被读屏识别 |
 
 ## 下载
@@ -106,10 +111,11 @@ POST /speed/dovalid?key=<uuid> 收尾
 
 ```
 lib/core/      协议常量、token、节点与 DES 编解码、运行日志
-lib/engine/    测速 isolate、事件模型、控制器
-lib/data/      设置与历史持久化、链路采集、省级边界兜底
-lib/ui/        页面、仪表盘、结果卡、底栏
-android/…/NetLink.kt   原生链路采集（连接类型 / 制式 / 频段 / 信号 / 定位 / 权限）
+lib/engine/    测速 isolate（采样窗口 / 断线重连）、事件模型、控制器
+lib/data/      设置与历史持久化、链路采集、省级边界兜底、应用内更新
+lib/ui/        页面、仪表盘、结果卡、悬浮底栏、更新弹层、Markdown 渲染
+android/…/NetLink.kt  原生链路采集（连接类型 / 制式 / 频段 / 信号 / 定位 / 权限）
+android/…/Updater.kt  安装 APK / 打开链接 / 读取 ABI
 ```
 
 ## 说明
