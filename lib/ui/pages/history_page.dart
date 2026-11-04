@@ -252,12 +252,39 @@ class _HistoryTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      record.timeText,
-                      style: text.bodySmall?.copyWith(
-                        fontSize: 13,
-                        color: scheme.onSurfaceVariant,
-                      ),
+                    // 时间 + 链路胶囊（运营商 / 制式频段），和详情页同一套信息
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          record.shortTimeText,
+                          style: text.bodySmall?.copyWith(
+                            fontSize: 13,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 5,
+                            runSpacing: 3,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (_operOf(record).isNotEmpty)
+                                _MiniTag(
+                                  icon: Icons.sim_card_outlined,
+                                  label: _operOf(record),
+                                ),
+                              if (record.netTag.isNotEmpty)
+                                _MiniTag(
+                                  icon: netIconFor(record.netKind),
+                                  label: record.netTag,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     // 只保留上下行两项：延迟/抖动/丢包在详情页看，列表不再挤爆宽度
@@ -295,6 +322,48 @@ Color _scoreColor(int score, ColorScheme scheme, AppPalette palette) {
   if (score >= 75) return scheme.primary;
   if (score >= 55) return palette.warning;
   return scheme.error;
+}
+
+/// 记录里实际使用的运营商：优先测速当时的，其次节点归属
+String _operOf(TestRecord record) =>
+    record.oper.isNotEmpty ? record.oper : record.node.oper;
+
+/// 列表里的紧凑链路胶囊（只有图标 + 短文本，和详情页同一套信息）
+class _MiniTag extends StatelessWidget {
+  const _MiniTag({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = scheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InlineMetric extends StatelessWidget {

@@ -2,6 +2,12 @@
 
 版本号与 Release 一致，APK 见 [Releases](https://github.com/yssite/qqwc-flutter/releases)。
 
+## v1.3.1
+
+- 记录列表每行加上链路胶囊（运营商 + 制式频段，如 `移动` `5G n41`），不用进详情也能看出当时走的什么网
+- 列表时间改为 `MM-DD HH:mm` 紧凑格式，完整时间仍在详情页
+- 新增 `TestRecord.shortTimeText`
+
 ## v1.3.0
 
 - **应用内更新**：设置页「检查更新」查询 GitHub Release，按 ABI 选包，多线程分段下载后拉起系统安装器

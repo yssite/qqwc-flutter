@@ -174,6 +174,13 @@ class TestRecord {
 
   DateTime get time => DateTime.fromMillisecondsSinceEpoch(ts * 1000);
 
+  /// 列表用短时间：11-04 13:33（完整时间在详情页）
+  String get shortTimeText {
+    final t = time;
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+  }
+
   String get timeText {
     final t = time;
     String two(int v) => v.toString().padLeft(2, '0');
