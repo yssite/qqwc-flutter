@@ -123,3 +123,8 @@ POST /speed/dovalid?key=<uuid>                    收尾
 ## 说明
 
 协议来自官方 App 的公开接口，用于互操作性与学习研究；不上传任何测速结果。
+本仓库中的测速节点 IP 均来自官方客户端内置的公开节点表。
+
+## 许可
+
+[GNU General Public License v3.0](LICENSE)
