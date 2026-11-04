@@ -31,9 +31,8 @@ class Sparkline extends StatelessWidget {
           ? Center(
               child: Text(
                 emptyHint,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
               ),
             )
           : TweenAnimationBuilder<double>(
@@ -73,14 +72,15 @@ class _SparkPainter extends CustomPainter {
     const padTop = 12.0;
     const padBottom = 10.0;
     final chartHeight = size.height - padTop - padBottom;
-    final maxValue = samples.reduce(math.max).clamp(1.0, double.infinity) * 1.18;
+    final maxValue =
+        samples.reduce(math.max).clamp(1.0, double.infinity) * 1.18;
     final count = samples.length;
     final dx = size.width / math.max(count - 1, 1);
 
     Offset pointAt(int i) => Offset(
-          i * dx,
-          padTop + chartHeight * (1 - (samples[i] / maxValue).clamp(0.0, 1.0)),
-        );
+      i * dx,
+      padTop + chartHeight * (1 - (samples[i] / maxValue).clamp(0.0, 1.0)),
+    );
 
     // 网格：三条水平线
     final gridPaint = Paint()
@@ -126,9 +126,8 @@ class _SparkPainter extends CustomPainter {
       ..strokeWidth = 2.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..shader = LinearGradient(colors: colors).createShader(
-        Rect.fromLTWH(0, 0, size.width, size.height),
-      );
+      ..shader = LinearGradient(colors: colors)
+          .createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawPath(path, linePaint);
 
     // 预热区：底部细条标注

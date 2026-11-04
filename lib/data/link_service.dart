@@ -138,7 +138,10 @@ class LinkInfo {
       case LinkKind.wifi:
         final w = wifi;
         if (w == null) return tag;
-        final head = [w.standard, w.freqLabel].where((e) => e.isNotEmpty).join(' ');
+        final head = [
+          w.standard,
+          w.freqLabel,
+        ].where((e) => e.isNotEmpty).join(' ');
         final parts = <String>[
           if (head.isNotEmpty) head,
           if (w.bandwidthMhz > 0) '${w.bandwidthMhz}MHz',
@@ -148,9 +151,10 @@ class LinkInfo {
       case LinkKind.cellular:
         final c = cell;
         if (c == null) return tag;
-        final head = [c.generation, c.bandLabel]
-            .where((e) => e.isNotEmpty)
-            .join(' ');
+        final head = [
+          c.generation,
+          c.bandLabel,
+        ].where((e) => e.isNotEmpty).join(' ');
         final parts = <String>[
           if (head.isNotEmpty) head,
           if (c.bandwidthMhz > 0) '${c.bandwidthMhz}MHz',
@@ -167,12 +171,12 @@ class LinkInfo {
 
   /// 网络大类，用于结果页选图标
   String get kindKey => switch (kind) {
-        LinkKind.wifi => 'wifi',
-        LinkKind.cellular => 'cell',
-        LinkKind.ethernet => 'lan',
-        LinkKind.vpn => 'vpn',
-        _ => '',
-      };
+    LinkKind.wifi => 'wifi',
+    LinkKind.cellular => 'cell',
+    LinkKind.ethernet => 'lan',
+    LinkKind.vpn => 'vpn',
+    _ => '',
+  };
 
   static LinkInfo fromMap(Map<String, dynamic> map) {
     final kind = switch ('${map['type'] ?? 'none'}') {
@@ -211,8 +215,7 @@ class LinkInfo {
               sinr: (cellMap['sinr'] as num?)?.toInt() ?? 0,
               lteBandwidthMhz:
                   (cellMap['lteBandwidthMhz'] as num?)?.toInt() ?? 0,
-              nrBandwidthMhz:
-                  (cellMap['nrBandwidthMhz'] as num?)?.toInt() ?? 0,
+              nrBandwidthMhz: (cellMap['nrBandwidthMhz'] as num?)?.toInt() ?? 0,
             )
           : null,
     );
@@ -230,9 +233,9 @@ class LinkPermissions {
   static const none = LinkPermissions();
 
   static LinkPermissions fromMap(Map<String, dynamic>? map) => LinkPermissions(
-        location: map?['location'] == true,
-        phone: map?['phone'] == true,
-      );
+    location: map?['location'] == true,
+    phone: map?['phone'] == true,
+  );
 }
 
 /// 安装包版本（直接读 APK，避免和界面里写死的字符串对不上）
@@ -302,7 +305,9 @@ class LinkService {
 
   static Future<LinkPermissions> permissions() async {
     try {
-      final map = await _channel.invokeMapMethod<String, dynamic>('permissions');
+      final map = await _channel.invokeMapMethod<String, dynamic>(
+        'permissions',
+      );
       return LinkPermissions.fromMap(map);
     } catch (_) {
       return LinkPermissions.none;
@@ -367,7 +372,15 @@ class LinkService {
   static String _tidyProvince(String raw) {
     var s = raw.trim();
     if (s.isEmpty) return '';
-    for (final suffix in const ['特别行政区', '壮族自治区', '回族自治区', '维吾尔自治区', '自治区', '省', '市']) {
+    for (final suffix in const [
+      '特别行政区',
+      '壮族自治区',
+      '回族自治区',
+      '维吾尔自治区',
+      '自治区',
+      '省',
+      '市',
+    ]) {
       if (s.endsWith(suffix)) {
         s = s.substring(0, s.length - suffix.length);
         break;

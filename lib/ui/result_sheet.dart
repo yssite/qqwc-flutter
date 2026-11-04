@@ -248,7 +248,8 @@ class _ResultSheetState extends State<ResultSheet> {
                   child: FilledButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      state.startTest(node: record.node);
+                      // 重新按当前网络匹配：换卡/切 WiFi 后再测不应该还钉着旧运营商的节点
+                      state.startTest();
                     },
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: const Text('再测一次'),

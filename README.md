@@ -31,11 +31,13 @@
 | 节点库 | 内置 596 节点，搜索 / 省份 / 运营商筛选，批量测延迟 |
 | 记录 | 本地持久化、详情曲线、滑动删除、CSV 导出 |
 | 诊断 | 连接情况、出口 IP、TCP 延迟、DNS、多目标连通质量、日志导出 |
+| 更新 | 启动自检 + 设置页检查 GitHub Release，多线程分段下载后直接拉起系统安装器 |
 | 无障碍 | 仪表盘、列表行、服务器卡均带语义标签，底栏可被读屏识别 |
 
 ## 下载
 
-到 [Releases](https://github.com/yssite/qqwc-flutter/releases) 取最新 APK：
+到 [Releases](https://github.com/yssite/qqwc-flutter/releases) 取最新 APK，也可以装好之后在
+「设置 → 检查更新」里直接下（ABI 自动匹配，分段并发下载）：
 
 | 文件 | 适用 |
 |---|---|

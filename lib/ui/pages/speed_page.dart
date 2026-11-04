@@ -168,7 +168,8 @@ class _SpeedPageState extends State<SpeedPage> {
                 onRetry: () {
                   _shownRecordId = null;
                   _gaugeMax = 100;
-                  state.startTest(node: live.node);
+                  // 失败多半是网络变了，重试也要重新匹配节点
+                  state.startTest();
                 },
               ),
             ],
@@ -183,7 +184,9 @@ class _SpeedPageState extends State<SpeedPage> {
                 } else {
                   _shownRecordId = null;
                   _gaugeMax = 100;
-                  state.startTest(node: live.node);
+                  // 每次点「开始测速」都重新按当前网络匹配节点：
+                  // 上一轮节点的运营商/省份可能已经随换卡、切 WiFi 变了。
+                  state.startTest();
                 }
               },
             ),

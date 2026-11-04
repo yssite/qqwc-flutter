@@ -100,7 +100,9 @@ class _BarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? scheme.primary : scheme.onSurfaceVariant.withValues(alpha: 0.85);
+    final color = selected
+        ? scheme.primary
+        : scheme.onSurfaceVariant.withValues(alpha: 0.85);
     return Semantics(
       button: true,
       selected: selected,

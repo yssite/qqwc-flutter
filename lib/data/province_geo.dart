@@ -5,7 +5,13 @@
 library;
 
 class _ProvinceBox {
-  const _ProvinceBox(this.name, this.latMin, this.latMax, this.lngMin, this.lngMax);
+  const _ProvinceBox(
+    this.name,
+    this.latMin,
+    this.latMax,
+    this.lngMin,
+    this.lngMax,
+  );
 
   final String name;
   final double latMin;

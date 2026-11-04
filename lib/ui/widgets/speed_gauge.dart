@@ -40,8 +40,8 @@ class SpeedGauge extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final side = size ??
-            math.min(constraints.maxWidth, 340.0).clamp(220.0, 360.0);
+        final side =
+            size ?? math.min(constraints.maxWidth, 340.0).clamp(220.0, 360.0);
         return SizedBox(
           width: side,
           height: side * 0.80,
@@ -53,75 +53,75 @@ class SpeedGauge extends StatelessWidget {
               return Semantics(
                 label: '当前速率 ${value.toStringAsFixed(1)} Mbps，$label',
                 child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _GaugePainter(
-                        value: animated,
-                        maxValue: maxValue,
-                        colors: colors,
-                        trackColor: trackColor,
-                        glowColor: colors.first.withValues(alpha: 0.45),
-                        tickColor: scheme.outlineVariant,
-                        labelColor: scheme.onSurfaceVariant,
-                        labelStyle: text.labelSmall ?? const TextStyle(),
-                        active: active,
+                  alignment: Alignment.center,
+                  children: [
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _GaugePainter(
+                          value: animated,
+                          maxValue: maxValue,
+                          colors: colors,
+                          trackColor: trackColor,
+                          glowColor: colors.first.withValues(alpha: 0.45),
+                          tickColor: scheme.outlineVariant,
+                          labelColor: scheme.onSurfaceVariant,
+                          labelStyle: text.labelSmall ?? const TextStyle(),
+                          active: active,
+                        ),
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.only(top: side * 0.10),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              animated >= 1000
-                                  ? animated.toStringAsFixed(0)
-                                  : animated.toStringAsFixed(1),
-                              style: text.displayMedium?.copyWith(
-                                fontSize: side * 0.19,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -2,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures()
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(left: 6),
-                              child: Text(
-                                unit,
-                                style: text.labelLarge?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
+                    Padding(
+                      padding: EdgeInsets.only(top: side * 0.10),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                animated >= 1000
+                                    ? animated.toStringAsFixed(0)
+                                    : animated.toStringAsFixed(1),
+                                style: text.displayMedium?.copyWith(
+                                  fontSize: side * 0.19,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -2,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        AnimatedSwitcher(
-                          duration: AppMotion.short,
-                          child: Text(
-                            label,
-                            key: ValueKey(label),
-                            style: text.labelMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              letterSpacing: 0.6,
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Text(
+                                  unit,
+                                  style: text.labelLarge?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          AnimatedSwitcher(
+                            duration: AppMotion.short,
+                            child: Text(
+                              label,
+                              key: ValueKey(label),
+                              style: text.labelMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                letterSpacing: 0.6,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
               );
             },
           ),

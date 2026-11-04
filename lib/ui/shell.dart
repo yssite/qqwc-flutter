@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app.dart';
+import '../data/update_service.dart';
 import 'pages/diagnostics_page.dart';
 import 'pages/history_page.dart';
 import 'pages/nodes_page.dart';
@@ -8,6 +9,7 @@ import 'pages/settings_page.dart';
 import 'pages/speed_page.dart';
 import 'permission_sheet.dart';
 import 'widgets/bottom_bar.dart';
+import 'widgets/update_card.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -23,6 +25,29 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _askPermissionsOnce());
+    // 权限弹窗之后再做更新检查，避免两个弹层叠在一起
+    Future<void>.delayed(const Duration(seconds: 2), _maybeCheckUpdate);
+  }
+
+  /// 启动时检查一次更新（受设置开关控制，6 小时内不重复请求）。
+  Future<void> _maybeCheckUpdate() async {
+    if (!mounted) return;
+    final state = AppScope.of(context, listen: false);
+    if (!state.settings.autoCheckUpdate) return;
+    final lastTs = state.settings.lastUpdateCheck;
+    await UpdateService.instance.check(
+      currentVersion: state.version.name,
+      dueOnly: true,
+      lastCheck: lastTs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(lastTs * 1000)
+          : null,
+    );
+    if (!mounted) return;
+    await state.updateSettings(
+      (s) => s.lastUpdateCheck = DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    );
+    if (!mounted || UpdateService.instance.info == null) return;
+    showUpdateBanner(context);
   }
 
   /// 首次启动弹一次权限说明；已授权或已问过就不再打扰。
@@ -55,9 +80,7 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return BottomBarScope(
-      inset: keyboardOpen
-          ? 12
-          : 74 + MediaQuery.viewPaddingOf(context).bottom,
+      inset: keyboardOpen ? 12 : 74 + MediaQuery.viewPaddingOf(context).bottom,
       child: SystemBars(
         child: Scaffold(
           backgroundColor: scheme.surface,
@@ -110,11 +133,7 @@ class _AppShellState extends State<AppShell> {
 
 /// 告诉各页面底部要预留多少空间（键盘弹出时为 0，导航栏会隐藏）。
 class BottomBarScope extends InheritedWidget {
-  const BottomBarScope({
-    super.key,
-    required this.inset,
-    required super.child,
-  });
+  const BottomBarScope({super.key, required this.inset, required super.child});
 
   final double inset;
 

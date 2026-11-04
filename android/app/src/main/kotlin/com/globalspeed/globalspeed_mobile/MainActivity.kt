@@ -6,12 +6,13 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
 
     private var netLink: NetLink? = null
+    private var updater: Updater? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        netLink = NetLink(this).also {
-            it.attach(flutterEngine.dartExecutor.binaryMessenger)
-        }
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        netLink = NetLink(this).also { it.attach(messenger) }
+        updater = Updater(this).also { it.attach(messenger) }
     }
 
     override fun onRequestPermissionsResult(
@@ -26,6 +27,8 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         netLink?.detach()
         netLink = null
+        updater?.detach()
+        updater = null
         super.onDestroy()
     }
 }

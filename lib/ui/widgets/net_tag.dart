@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 import 'common.dart';
 
 IconData netIconFor(String kind) => switch (kind) {
-      'wifi' => Icons.wifi_rounded,
-      'cell' => Icons.signal_cellular_alt_rounded,
-      'lan' => Icons.settings_ethernet_rounded,
-      'vpn' => Icons.vpn_key_rounded,
-      _ => Icons.language_rounded,
-    };
+  'wifi' => Icons.wifi_rounded,
+  'cell' => Icons.signal_cellular_alt_rounded,
+  'lan' => Icons.settings_ethernet_rounded,
+  'vpn' => Icons.vpn_key_rounded,
+  _ => Icons.language_rounded,
+};
 
 class NetTagPill extends StatelessWidget {
   const NetTagPill({
@@ -27,10 +27,6 @@ class NetTagPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StatusPill(
-      label: tag,
-      icon: netIconFor(kind),
-      filled: filled,
-    );
+    return StatusPill(label: tag, icon: netIconFor(kind), filled: filled);
   }
 }

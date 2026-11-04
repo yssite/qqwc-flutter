@@ -5,9 +5,11 @@ import '../../app.dart';
 import '../../app_state.dart';
 import '../../core/app_log.dart';
 import '../../core/node.dart';
+import '../../data/updater.dart';
 import '../permission_sheet.dart';
 import '../widgets/bottom_bar.dart';
 import '../widgets/common.dart';
+import '../widgets/update_card.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -39,10 +41,7 @@ class SettingsPage extends StatelessWidget {
           ),
           sliver: SliverList.list(
             children: [
-              const PageHeader(
-                title: '设置',
-                subtitle: '测速参数 · 节点偏好 · 网络与定位',
-              ),
+              const PageHeader(title: '设置', subtitle: '测速参数 · 节点偏好 · 网络与定位'),
 
               // -------- 测速参数 --------
               SectionCard(
@@ -68,11 +67,10 @@ class SettingsPage extends StatelessWidget {
                       selected: {
                         [5, 8, 15, 30].contains(settings.durationSec)
                             ? settings.durationSec
-                            : 8
+                            : 8,
                       },
-                      onSelectionChanged: (v) => state.updateSettings(
-                        (s) => s.durationSec = v.first,
-                      ),
+                      onSelectionChanged: (v) =>
+                          state.updateSettings((s) => s.durationSec = v.first),
                     ),
                     const SizedBox(height: 18),
                     _SliderTile(
@@ -93,9 +91,8 @@ class SettingsPage extends StatelessWidget {
                       min: 1,
                       max: 8,
                       divisions: 7,
-                      onChanged: (v) => state.updateSettings(
-                        (s) => s.upThreads = v.round(),
-                      ),
+                      onChanged: (v) =>
+                          state.updateSettings((s) => s.upThreads = v.round()),
                     ),
                     const SizedBox(height: 4),
                     SwitchListTile.adaptive(
@@ -103,9 +100,8 @@ class SettingsPage extends StatelessWidget {
                       title: const Text('跳过上行测速'),
                       subtitle: const Text('只测下行，耗时减半'),
                       value: settings.skipUpload,
-                      onChanged: (v) => state.updateSettings(
-                        (s) => s.skipUpload = v,
-                      ),
+                      onChanged: (v) =>
+                          state.updateSettings((s) => s.skipUpload = v),
                     ),
                   ],
                 ),
@@ -128,9 +124,8 @@ class SettingsPage extends StatelessWidget {
                       title: const Text('自动匹配最优节点'),
                       subtitle: const Text('按出口 IP / 省份 / 运营商选择'),
                       value: settings.autoMatch,
-                      onChanged: (v) => state.updateSettings(
-                        (s) => s.autoMatch = v,
-                      ),
+                      onChanged: (v) =>
+                          state.updateSettings((s) => s.autoMatch = v),
                     ),
                     const SizedBox(height: 4),
                     Text('运营商', style: text.labelLarge),
@@ -142,17 +137,15 @@ class SettingsPage extends StatelessWidget {
                         FilterChip(
                           label: const Text('不限'),
                           selected: settings.oper.isEmpty,
-                          onSelected: (_) => state.updateSettings(
-                            (s) => s.oper = '',
-                          ),
+                          onSelected: (_) =>
+                              state.updateSettings((s) => s.oper = ''),
                         ),
                         for (final oper in NodeRepository.operList)
                           FilterChip(
                             label: Text(oper),
                             selected: settings.oper == oper,
-                            onSelected: (_) => state.updateSettings(
-                              (s) => s.oper = oper,
-                            ),
+                            onSelected: (_) =>
+                                state.updateSettings((s) => s.oper = oper),
                           ),
                       ],
                     ),
@@ -171,9 +164,8 @@ class SettingsPage extends StatelessWidget {
                         for (final p in provinces)
                           DropdownMenuItem(value: p, child: Text(p)),
                       ],
-                      onChanged: (v) => state.updateSettings(
-                        (s) => s.province = v ?? '',
-                      ),
+                      onChanged: (v) =>
+                          state.updateSettings((s) => s.province = v ?? ''),
                     ),
                     const SizedBox(height: 14),
                     SizedBox(
@@ -196,13 +188,19 @@ class SettingsPage extends StatelessWidget {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
-                            : const Icon(Icons.cloud_download_outlined, size: 18),
-                        label: Text(state.nodesRefreshing
-                            ? '正在更新…'
-                            : '更新节点表（${state.nodes.length}）'),
+                            : const Icon(
+                                Icons.cloud_download_outlined,
+                                size: 18,
+                              ),
+                        label: Text(
+                          state.nodesRefreshing
+                              ? '正在更新…'
+                              : '更新节点表（${state.nodes.length}）',
+                        ),
                         style: FilledButton.styleFrom(
                           minimumSize: const Size(0, 48),
                           shape: const StadiumBorder(),
@@ -245,7 +243,8 @@ class SettingsPage extends StatelessWidget {
                       icon: Icons.my_location_rounded,
                       label: '定位',
                       granted: state.permissions.location,
-                      detail: placeText,                    ),
+                      detail: placeText,
+                    ),
                     _PermissionRow(
                       icon: Icons.signal_cellular_alt_rounded,
                       label: '电话状态',
@@ -287,11 +286,7 @@ class SettingsPage extends StatelessWidget {
                           : 'Flutter 网测 · 移动版 ${state.version.name}',
                     ),
                     const SizedBox(height: 14),
-                    _KvRow(
-                      label: '设备标识',
-                      value: settings.deviceId,
-                      mono: true,
-                    ),
+                    _KvRow(label: '设备标识', value: settings.deviceId, mono: true),
                     _KvRow(
                       label: '本机地址',
                       value: state.netInfo.localIp.isEmpty
@@ -306,6 +301,19 @@ class SettingsPage extends StatelessWidget {
                       label: '节点库',
                       value: '${state.nodes.length} 个 · 内置 + 远端增量',
                     ),
+                    const SizedBox(height: 6),
+                    _LinkRow(
+                      icon: Icons.code_rounded,
+                      label: 'GitHub 仓库',
+                      value: Updater.repo,
+                      onTap: () => Updater.openUrl(Updater.repoUrl),
+                    ),
+                    _LinkRow(
+                      icon: Icons.system_update_alt_rounded,
+                      label: '发布页',
+                      value: '查看历史版本与更新说明',
+                      onTap: () => Updater.openUrl(Updater.releasesUrl),
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       '协议来自 CAICT「全球网测」Android 4.4.8 的公开接口，'
@@ -318,6 +326,15 @@ class SettingsPage extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 14),
+
+              // -------- 检查更新 --------
+              UpdateCard(
+                version: state.version.name.isEmpty ? '--' : state.version.name,
+                autoCheck: settings.autoCheckUpdate,
+                onAutoCheckChanged: (v) =>
+                    state.updateSettings((s) => s.autoCheckUpdate = v),
               ),
               const SizedBox(height: 14),
 
@@ -426,19 +443,14 @@ class SettingsPage extends StatelessWidget {
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导出失败：$e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导出失败：$e')));
     }
   }
 }
 
 class _Title extends StatelessWidget {
-  const _Title({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-  });
+  const _Title({required this.icon, required this.title, this.subtitle});
 
   final IconData icon;
   final String title;
@@ -467,9 +479,7 @@ class _Title extends StatelessWidget {
             if (subtitle != null)
               Text(
                 subtitle!,
-                style: text.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+                style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
           ],
         ),
@@ -588,11 +598,7 @@ class _SliderTile extends StatelessWidget {
 }
 
 class _KvRow extends StatelessWidget {
-  const _KvRow({
-    required this.label,
-    required this.value,
-    this.mono = false,
-  });
+  const _KvRow({required this.label, required this.value, this.mono = false});
 
   final String label;
   final String value;
@@ -625,6 +631,59 @@ class _KvRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 「关于」里的可点击链接行
+class _LinkRow extends StatelessWidget {
+  const _LinkRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: scheme.primary),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 76,
+              child: Text(
+                label,
+                style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.bodySmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 18, color: scheme.outline),
+          ],
+        ),
       ),
     );
   }

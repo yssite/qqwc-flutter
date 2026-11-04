@@ -2,6 +2,16 @@
 
 版本号与 Release 一致，APK 见 [Releases](https://github.com/yssite/qqwc-flutter/releases)。
 
+## v1.3.0
+
+- **应用内更新**：设置页「检查更新」查询 GitHub Release，按 ABI 选包，多线程分段下载后拉起系统安装器
+- 启动时自动检查更新（可在设置里关闭；6 小时内不重复请求），发现新版本显示「检测到新版本：x.y.z   详情 / 更新」提示条
+- 更新详情弹层：版本、更新说明、下载进度、在浏览器打开
+- 「关于」新增 GitHub 仓库与发布页入口
+- 修复：主按钮 / 结果页「再测一次」/ 失败重试都会重新匹配节点（此前会沿用上一次的节点，
+  切卡或切 WiFi 后仍在测旧运营商的服务器）
+- 新增 	est/updater_test.dart（版本比较、ABI 选包、取消识别）
+
 ## v1.2.5
 
 - 链路变化改为**事件驱动**：原生 ConnectivityManager.registerDefaultNetworkCallback 与

@@ -27,6 +27,8 @@ class AppSettings {
     this.permissionsAsked = false,
     this.verboseLog = false,
     this.schema = 3,
+    this.autoCheckUpdate = true,
+    this.lastUpdateCheck = 0,
   });
 
   bool autoMatch;
@@ -50,45 +52,55 @@ class AppSettings {
   /// 详细日志：额外记录每次链路快照、原生诊断与采样明细
   bool verboseLog;
 
+  /// 启动时自动检查 GitHub 更新
+  bool autoCheckUpdate;
+
+  /// 上次检查更新时间（epoch 秒），用于避免每次启动都请求 GitHub
+  int lastUpdateCheck;
+
   /// 设置结构版本，用于一次性迁移（v2：清掉旧版误存的自动运营商）
   int schema;
 
   Map<String, dynamic> toJson() => {
-        'autoMatch': autoMatch,
-        'province': province,
-        'city': city,
-        'oper': oper,
-        'durationSec': durationSec,
-        'downThreads': downThreads,
-        'upThreads': upThreads,
-        'skipUpload': skipUpload,
-        'ipv6': ipv6,
-        'deviceId': deviceId,
-        'model': model,
-        'autoLocate': autoLocate,
-        'permissionsAsked': permissionsAsked,
-        'verboseLog': verboseLog,
-        'schema': schema,
-      };
+    'autoMatch': autoMatch,
+    'province': province,
+    'city': city,
+    'oper': oper,
+    'durationSec': durationSec,
+    'downThreads': downThreads,
+    'upThreads': upThreads,
+    'skipUpload': skipUpload,
+    'ipv6': ipv6,
+    'deviceId': deviceId,
+    'model': model,
+    'autoLocate': autoLocate,
+    'permissionsAsked': permissionsAsked,
+    'verboseLog': verboseLog,
+    'autoCheckUpdate': autoCheckUpdate,
+    'lastUpdateCheck': lastUpdateCheck,
+    'schema': schema,
+  };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
-        autoMatch: j['autoMatch'] as bool? ?? true,
-        province: '${j['province'] ?? ''}',
-        city: '${j['city'] ?? ''}',
-        oper: '${j['oper'] ?? ''}',
-        durationSec: (j['durationSec'] as num?)?.toInt() ?? 8,
-        downThreads: (j['downThreads'] as num?)?.toInt() ?? 8,
-        upThreads: (j['upThreads'] as num?)?.toInt() ?? 4,
-        skipUpload: j['skipUpload'] as bool? ?? false,
-        ipv6: j['ipv6'] as bool? ?? false,
-        deviceId: '${j['deviceId'] ?? ''}',
-        model: '${j['model'] ?? 'Android'}',
-        autoLocate: j['autoLocate'] as bool? ?? true,
-        permissionsAsked: j['permissionsAsked'] as bool? ?? false,
-        verboseLog: j['verboseLog'] as bool? ?? false,
-        // 旧数据没有该字段 → 0，触发下面的迁移（清掉旧版自动写入的运营商）
-        schema: (j['schema'] as num?)?.toInt() ?? 0,
-      );
+    autoMatch: j['autoMatch'] as bool? ?? true,
+    province: '${j['province'] ?? ''}',
+    city: '${j['city'] ?? ''}',
+    oper: '${j['oper'] ?? ''}',
+    durationSec: (j['durationSec'] as num?)?.toInt() ?? 8,
+    downThreads: (j['downThreads'] as num?)?.toInt() ?? 8,
+    upThreads: (j['upThreads'] as num?)?.toInt() ?? 4,
+    skipUpload: j['skipUpload'] as bool? ?? false,
+    ipv6: j['ipv6'] as bool? ?? false,
+    deviceId: '${j['deviceId'] ?? ''}',
+    model: '${j['model'] ?? 'Android'}',
+    autoLocate: j['autoLocate'] as bool? ?? true,
+    permissionsAsked: j['permissionsAsked'] as bool? ?? false,
+    verboseLog: j['verboseLog'] as bool? ?? false,
+    autoCheckUpdate: j['autoCheckUpdate'] as bool? ?? true,
+    lastUpdateCheck: (j['lastUpdateCheck'] as num?)?.toInt() ?? 0,
+    // 旧数据没有该字段 → 0，触发下面的迁移（清掉旧版自动写入的运营商）
+    schema: (j['schema'] as num?)?.toInt() ?? 0,
+  );
 }
 
 class SettingsStore {
@@ -156,8 +168,9 @@ class HistoryStore {
   static Future<void> save(List<TestRecord> records) async {
     try {
       final file = await _file();
-      final text =
-          jsonEncode(records.map((e) => e.toJson()).toList(growable: false));
+      final text = jsonEncode(
+        records.map((e) => e.toJson()).toList(growable: false),
+      );
       await file.writeAsString(text, flush: true);
     } catch (_) {
       // 存储失败不阻塞测速
@@ -166,37 +179,41 @@ class HistoryStore {
 
   static Future<String> exportCsv(List<TestRecord> records) async {
     final sb = StringBuffer();
-    sb.writeln('time,node,ip,port,isp,ping_ms,jitter_ms,loss_pct,'
-        'down_avg_mbps,down_max_mbps,up_avg_mbps,up_max_mbps,score,grade');
+    sb.writeln(
+      'time,node,ip,port,isp,ping_ms,jitter_ms,loss_pct,'
+      'down_avg_mbps,down_max_mbps,up_avg_mbps,up_max_mbps,score,grade',
+    );
     for (final r in records) {
-      sb.writeln([
-        r.timeText,
-        _csv(r.node.hostname),
-        r.node.hostip,
-        r.node.port,
-        _csv(r.node.oper),
-        r.ping.avg.toStringAsFixed(2),
-        r.ping.jitter.toStringAsFixed(2),
-        r.ping.loss.toStringAsFixed(0),
-        r.down.avg.toStringAsFixed(2),
-        r.down.max.toStringAsFixed(2),
-        r.up.avg.toStringAsFixed(2),
-        r.up.max.toStringAsFixed(2),
-        '${r.score}',
-        _csv(r.grade),
-      ].join(','));
+      sb.writeln(
+        [
+          r.timeText,
+          _csv(r.node.hostname),
+          r.node.hostip,
+          r.node.port,
+          _csv(r.node.oper),
+          r.ping.avg.toStringAsFixed(2),
+          r.ping.jitter.toStringAsFixed(2),
+          r.ping.loss.toStringAsFixed(0),
+          r.down.avg.toStringAsFixed(2),
+          r.down.max.toStringAsFixed(2),
+          r.up.avg.toStringAsFixed(2),
+          r.up.max.toStringAsFixed(2),
+          '${r.score}',
+          _csv(r.grade),
+        ].join(','),
+      );
     }
     final dir = await getTemporaryDirectory();
     final file = File(
-        '${dir.path}/globalspeed_history_${DateTime.now().millisecondsSinceEpoch}.csv');
+      '${dir.path}/globalspeed_history_${DateTime.now().millisecondsSinceEpoch}.csv',
+    );
     await file.writeAsString(sb.toString(), flush: true);
     return file.path;
   }
 
-  static String _csv(String value) =>
-      value.contains(',') || value.contains('"')
-          ? '"${value.replaceAll('"', '""')}"'
-          : value;
+  static String _csv(String value) => value.contains(',') || value.contains('"')
+      ? '"${value.replaceAll('"', '""')}"'
+      : value;
 }
 
 /// 出口 IP / 归属地 / 运营商识别（与桌面版一致：ip-api → cip.cc → ipify）
@@ -206,7 +223,9 @@ class NetInfoService {
   static String operOf(String isp) {
     final s = isp.replaceAll(' ', '');
     final upper = s.toUpperCase();
-    if (s.contains('电信') || upper.contains('CHINANET') || upper.contains('CHINA TELECOM')) {
+    if (s.contains('电信') ||
+        upper.contains('CHINANET') ||
+        upper.contains('CHINA TELECOM')) {
       return '电信';
     }
     if (s.contains('联通') ||
@@ -237,8 +256,10 @@ class NetInfoService {
 
   static Future<NetInfo> detect() async {
     try {
-      final map = await HttpText.getJson('http://ip-api.com/json/?lang=zh-CN',
-          timeout: const Duration(seconds: 5));
+      final map = await HttpText.getJson(
+        'http://ip-api.com/json/?lang=zh-CN',
+        timeout: const Duration(seconds: 5),
+      );
       if (map != null && '${map['query'] ?? ''}'.isNotEmpty) {
         return NetInfo(
           ip: '${map['query']}',
@@ -251,8 +272,10 @@ class NetInfoService {
       }
     } catch (_) {}
     try {
-      final text = await HttpText.get('https://api.ipify.org',
-          timeout: const Duration(seconds: 5));
+      final text = await HttpText.get(
+        'https://api.ipify.org',
+        timeout: const Duration(seconds: 5),
+      );
       final ip = text.trim();
       if (ip.contains('.')) return NetInfo(ip: ip);
     } catch (_) {}
