@@ -77,6 +77,16 @@ class UpdateService extends ChangeNotifier {
   Future<void> download() async {
     final a = asset;
     if (a == null || phase == UpdatePhase.downloading) return;
+
+    // 已经下好过就不要再下一遍：取消安装后点「更新」应该直接重新拉起安装器
+    if (await _reuseDownloaded(a)) {
+      phase = UpdatePhase.ready;
+      message = '安装包已下载，重新打开安装器';
+      notifyListeners();
+      await install();
+      return;
+    }
+
     phase = UpdatePhase.downloading;
     received = 0;
     total = a.size;
@@ -111,6 +121,41 @@ class UpdateService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 缓存里已有完整安装包（大小与资源一致）就直接复用。
+  Future<bool> _reuseDownloaded(UpdateAsset a) async {
+    final cached = file;
+    if (cached != null && await _isComplete(cached, a)) {
+      AppLog.info('update', '复用已下载的安装包 ${cached.path}');
+      return true;
+    }
+    final guess = await Updater.cachedPath(a);
+    if (guess != null && await _isComplete(guess, a)) {
+      file = guess;
+      AppLog.info('update', '复用缓存安装包 ${guess.path}');
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> _isComplete(File f, UpdateAsset a) async {
+    try {
+      if (!await f.exists()) return false;
+      final len = await f.length();
+      return len > 0 && (a.size <= 0 || len == a.size);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 卡片 / 弹层的主动作：已下载就安装，否则下载。
+  Future<void> primaryAction() async {
+    if (phase == UpdatePhase.ready) {
+      await install();
+      return;
+    }
+    await download();
+  }
+
   Future<void> install() async {
     final f = file;
     if (f == null) return;
@@ -121,7 +166,8 @@ class UpdateService extends ChangeNotifier {
       return;
     }
     final ok = await Updater.install(f.path);
-    message = ok ? '已唤起系统安装器' : '无法唤起安装器，可在发布页手动下载';
+    phase = UpdatePhase.ready;
+    message = ok ? '已打开系统安装器 · 取消后可再次点安装' : '无法唤起安装器，可在发布页手动下载';
     notifyListeners();
   }
 

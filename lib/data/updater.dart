@@ -178,6 +178,17 @@ class Updater {
     return assets.isEmpty ? null : assets.first;
   }
 
+  /// 已下载完成的安装包（App 重启后仍可复用，避免重复下载）。
+  static Future<File?> cachedPath(UpdateAsset asset) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/update-${asset.name}');
+      return await f.exists() ? f : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 多线程分段下载（GitHub 直连慢，分段并发能明显提速）。
   static Future<File> download(
     UpdateAsset asset, {

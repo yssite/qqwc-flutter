@@ -193,7 +193,7 @@ class _HistoryTile extends StatelessWidget {
         onTap: onTap,
         scale: 0.985,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
           decoration: BoxDecoration(
             color: scheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(24),
@@ -245,13 +245,13 @@ class _HistoryTile extends StatelessWidget {
                           ? record.node.hostip
                           : record.node.hostname,
                       style: text.titleMedium?.copyWith(
-                        fontSize: 17,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     // 时间 + 链路胶囊（运营商 / 制式频段），和详情页同一套信息
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -271,7 +271,8 @@ class _HistoryTile extends StatelessWidget {
                             runSpacing: 3,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              if (_operOf(record).isNotEmpty)
+                              // 节点名里已经带运营商（如「成都移动」）时不再重复显示
+                              if (_showOper(record))
                                 _MiniTag(
                                   icon: Icons.sim_card_outlined,
                                   label: _operOf(record),
@@ -286,7 +287,7 @@ class _HistoryTile extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     // 只保留上下行两项：延迟/抖动/丢包在详情页看，列表不再挤爆宽度
                     Wrap(
                       spacing: 14,
@@ -322,6 +323,14 @@ Color _scoreColor(int score, ColorScheme scheme, AppPalette palette) {
   if (score >= 75) return scheme.primary;
   if (score >= 55) return palette.warning;
   return scheme.error;
+}
+
+/// 是否需要在列表里单独显示运营商胶囊（节点名已含运营商时省略）
+bool _showOper(TestRecord record) {
+  final oper = _operOf(record);
+  if (oper.isEmpty) return false;
+  final name = record.node.hostname;
+  return !name.contains(oper);
 }
 
 /// 记录里实际使用的运营商：优先测速当时的，其次节点归属

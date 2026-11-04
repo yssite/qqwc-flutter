@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../data/update_service.dart';
+import 'markdown_text.dart';
 
 Future<void> showUpdateSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -71,9 +72,9 @@ class UpdateSheet extends StatelessWidget {
                     maxHeight: media.size.height * 0.36,
                   ),
                   child: SingleChildScrollView(
-                    child: Text(
+                    child: MarkdownText(
                       info.notes.trim(),
-                      style: text.bodySmall?.copyWith(
+                      baseStyle: text.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                         height: 1.55,
                       ),
@@ -136,10 +137,14 @@ class UpdateSheet extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: s.busy ? null : s.download,
+                      onPressed: s.busy ? null : s.primaryAction,
                       icon: const Icon(Icons.download_rounded, size: 18),
                       label: Text(
-                        s.phase == UpdatePhase.downloading ? '下载中…' : '下载并安装',
+                        s.phase == UpdatePhase.downloading
+                            ? '下载中…'
+                            : s.phase == UpdatePhase.ready
+                                ? '安装'
+                                : '下载并安装',
                       ),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50),
