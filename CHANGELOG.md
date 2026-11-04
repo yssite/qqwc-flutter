@@ -2,6 +2,13 @@
 
 版本号与 Release 一致，APK 见 [Releases](https://github.com/yssite/qqwc-flutter/releases)。
 
+## v1.3.5
+
+- **回退到 debug 签名**：小范围分发、不上架商店，同一把钥匙才能让应用内更新直接覆盖安装
+  - 正式签名的接线保留在 `build.gradle.kts`（检测到 `android/key.properties` 即启用），需要时放回文件即可
+  - 装了 v1.3.4（正式签名版）的设备需要卸载一次；从 v1.3.3 及更早版本可直接覆盖安装
+  - README 补充签名说明与备份提醒
+
 ## v1.3.4
 
 - **改用正式签名**：ndroid/key.properties（已 gitignore）读取 release keystore，缺失时回退 debug 签名

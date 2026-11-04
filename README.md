@@ -64,9 +64,19 @@ $env:PUB_HOSTED_URL='https://pub.flutter-io.cn'
 $env:FLUTTER_STORAGE_BASE_URL='https://storage.flutter-io.cn'
 ```
 
-### release 签名
+### 签名
 
-`android/app/build.gradle.kts` 会读取 `android/key.properties`（已在 `.gitignore` 中）：
+当前发布包使用 **debug 签名**（Flutter 模板默认的 `~/.android/debug.keystore`），
+原因是本工具只在自己的 Release 页分发、不上架应用商店，用同一把钥匙才能让应用内更新直接覆盖安装。
+
+需要注意：
+
+- 这把钥匙在**本机** `~/.android/debug.keystore`，换机器 / 重装系统后指纹会变，届时老用户只能卸载重装
+  （建议把这个文件备份到密码管理器）
+- debug 证书在本机有效期到 2056 年，不存在过期问题；但它密码是公开的，
+  别人理论上可以用同一把 debug 钥匙签一个 APK 覆盖安装
+
+如果以后要正式分发或上架，把密钥文件放到仓库外，在 `android/key.properties`（已被 `.gitignore`）里填：
 
 ```properties
 storeFile=/path/to/release.jks
@@ -75,8 +85,7 @@ keyAlias=***
 keyPassword=***
 ```
 
-文件不存在时自动回退到 debug 签名，方便在本机或 CI 上跑通构建；**正式分发务必带上自己的 keystore**，
-否则换签名后所有人都得卸载重装。
+构建脚本检测到该文件就会自动改用正式签名；从 debug 切过去需要用户**卸载一次**，之后就能一直覆盖更新。
 
 ## 协议
 

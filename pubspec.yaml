@@ -1,7 +1,7 @@
 name: globalspeed_mobile
 description: "Flutter 网测 · 移动端网络测速"
 publish_to: 'none'
-version: 1.3.4+13400
+version: 1.3.5+13500
 
 environment:
   sdk: ^3.13.7
