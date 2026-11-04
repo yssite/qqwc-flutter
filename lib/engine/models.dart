@@ -148,6 +148,7 @@ class TestRecord {
     required this.net,
     this.netTag = '',
     this.netKind = '',
+    this.oper = '',
   });
 
   final String id;
@@ -167,6 +168,9 @@ class TestRecord {
 
   /// 链路大类：wifi / cell / lan / vpn，用于选图标
   final String netKind;
+
+  /// 测速当时实际使用的运营商（数据卡），结果卡优先展示它
+  final String oper;
 
   DateTime get time => DateTime.fromMillisecondsSinceEpoch(ts * 1000);
 
@@ -191,6 +195,7 @@ class TestRecord {
         'net': net,
         'netTag': netTag,
         'netKind': netKind,
+        'oper': oper,
       };
 
   factory TestRecord.fromJson(Map<String, dynamic> j) => TestRecord(
@@ -207,6 +212,7 @@ class TestRecord {
         net: '${j['net'] ?? ''}',
         netTag: '${j['netTag'] ?? ''}',
         netKind: '${j['netKind'] ?? ''}',
+        oper: '${j['oper'] ?? ''}',
       );
 }
 

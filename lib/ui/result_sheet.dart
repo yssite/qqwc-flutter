@@ -133,9 +133,13 @@ class _ResultSheetState extends State<ResultSheet> {
                                   spacing: 6,
                                   runSpacing: 6,
                                   children: [
-                                    if (record.node.oper.isNotEmpty)
+                                    // 优先显示测速时实际在跑的运营商，而不是节点归属
+                                    if (record.oper.isNotEmpty ||
+                                        record.node.oper.isNotEmpty)
                                       StatusPill(
-                                        label: record.node.oper,
+                                        label: record.oper.isNotEmpty
+                                            ? record.oper
+                                            : record.node.oper,
                                         filled: true,
                                       ),
                                     if (record.netTag.isNotEmpty)

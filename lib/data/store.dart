@@ -26,6 +26,7 @@ class AppSettings {
     this.autoLocate = true,
     this.permissionsAsked = false,
     this.verboseLog = false,
+    this.schema = 2,
   });
 
   bool autoMatch;
@@ -49,6 +50,9 @@ class AppSettings {
   /// 详细日志：额外记录每次链路快照、原生诊断与采样明细
   bool verboseLog;
 
+  /// 设置结构版本，用于一次性迁移（v2：清掉旧版误存的自动运营商）
+  int schema;
+
   Map<String, dynamic> toJson() => {
         'autoMatch': autoMatch,
         'province': province,
@@ -64,6 +68,7 @@ class AppSettings {
         'autoLocate': autoLocate,
         'permissionsAsked': permissionsAsked,
         'verboseLog': verboseLog,
+        'schema': schema,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -106,6 +111,13 @@ class SettingsStore {
     }
     if (settings.deviceId.isEmpty) {
       settings.deviceId = 'TS${randomHex(16)}';
+      await save(settings);
+    }
+    // v2：旧版本会把「出口 IP 识别出的运营商」写回偏好，切卡后一直沿用旧运营商。
+    // 升级时清掉一次，让运营商重新跟随实时出口 IP / 用户手动选择。
+    if (settings.schema < 2) {
+      settings.oper = '';
+      settings.schema = 2;
       await save(settings);
     }
     return settings;

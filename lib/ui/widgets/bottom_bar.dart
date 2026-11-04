@@ -6,10 +6,15 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
+import '../shell.dart' show BottomBarScope;
+
 /// 悬浮导航栏占据的高度（含手势条），页面滚动内容按它留出底部余量。
+/// 键盘弹出时导航栏会被隐藏，shell 会把 inset 调到 12，输入框就不会被顶出屏幕。
 double bottomBarInset(BuildContext context) {
-  final safe = MediaQuery.viewPaddingOf(context).bottom;
-  return 74 + safe;
+  final fromShell = BottomBarScope.maybeOf(context);
+  if (fromShell != null) return fromShell;
+  final media = MediaQuery.of(context);
+  return 74 + media.viewPadding.bottom;
 }
 
 class BottomBarItem {

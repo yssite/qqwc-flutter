@@ -386,8 +386,14 @@ class RecordDetailPage extends StatelessWidget {
                         spacing: 6,
                         runSpacing: 6,
                         children: [
-                          if (record.node.oper.isNotEmpty)
-                            StatusPill(label: record.node.oper, filled: true),
+                          if (record.oper.isNotEmpty ||
+                              record.node.oper.isNotEmpty)
+                            StatusPill(
+                              label: record.oper.isNotEmpty
+                                  ? record.oper
+                                  : record.node.oper,
+                              filled: true,
+                            ),
                           if (record.netTag.isNotEmpty)
                             NetTagPill(
                               tag: record.netTag,

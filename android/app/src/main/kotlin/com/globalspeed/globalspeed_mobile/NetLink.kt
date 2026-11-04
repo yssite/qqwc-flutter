@@ -169,10 +169,14 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
         }
     }
 
-    /** 数据卡变了就重新注册回调，保证 DisplayInfo / PhysicalChannelConfig 都跟着新卡。 */
+    /**
+     * 数据卡变了、或上次注册失败（例如启动时还没授权）就重新注册回调。
+     * 这一步是关键：注册失败必须能把状态清空，否则永远拿不到 DisplayInfo / PhysicalChannelConfig。
+     */
     private fun ensureTelephony() {
         val subId = activeDataSubId()
-        if (subId == registeredSubId) return
+        val needRegister = telephonyCallback == null || subId != registeredSubId
+        if (!needRegister) return
         unregisterTelephony()
         registeredSubId = subId
         registerTelephony()
@@ -283,7 +287,13 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
         out["type"] = type
         out["vpn"] = vpnActive && type != "vpn"
         out["metered"] = metered
-        out["subId"] = activeDataSubId()
+        val subId = activeDataSubId()
+        out["subId"] = subId
+        out["simSlot"] = try {
+            if (subId >= 0) SubscriptionManager.getSlotIndex(subId) else -1
+        } catch (_: Throwable) {
+            -1
+        }
         out["operatorName"] = operatorName()
 
         if (type == "cellular" || type == "vpn") {
@@ -423,7 +433,9 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
             null
         } ?: return out
 
-        // 只认数据卡所在的那张网：先按 PLMN 过滤掉另一张卡的邻区，再按制式挑服务小区
+        // 只认数据卡所在的那张网。
+        // 注意：部分 ROM（如 MIUI）的 allCellInfo 会把两张卡的小区一起返回，
+        // 因此这里绝不允许「匹配不到就退回全部小区」—— 宁可只显示制式，也不能冒用另一张卡的数据。
         val plmn = normalizePlmn(
             try {
                 tm.networkOperator.orEmpty()
@@ -433,17 +445,19 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
         )
         out["plmn"] = plmn
         val registered = cells.filter { it.isRegistered }
-        val sameCarrier = if (plmn.isEmpty()) {
-            registered
-        } else {
-            registered.filter { normalizePlmn(cellPlmn(it)) == plmn }
-        }
-        val pool = if (sameCarrier.isNotEmpty()) sameCarrier else registered
+        val ownCells = registered.filter { matchCell(it, plmn) != "none" }
         out["cellCount"] = cells.size
-        out["sameCarrierCount"] = pool.size
-        val target = pool.firstOrNull {
-            (pcIsNr && it is CellInfoNr) || (!pcIsNr && it is CellInfoLte)
-        } ?: pool.firstOrNull()
+        out["ownCellCount"] = ownCells.size
+        out["cellMatch"] = registered.firstOrNull()?.let { matchCell(it, plmn) } ?: "none"
+        if (ownCells.isEmpty()) {
+            // 仍然记录一下每个小区归属，方便日志排查
+            out["cellsSeen"] = registered.map { cellPlmns(it) }
+            return out
+        }
+
+        val target = ownCells.firstOrNull {
+            if (nr) it is CellInfoNr else it is CellInfoLte
+        } ?: ownCells.firstOrNull()
 
         for (ci in listOfNotNull(target)) {
             when (ci) {
@@ -459,7 +473,6 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
                         val ss = ci.cellSignalStrength as? CellSignalStrengthNr
                         if (ss != null && ss.ssRsrp != Int.MAX_VALUE) out["rsrp"] = ss.ssRsrp
                         if (ss != null && ss.ssSinr != Int.MAX_VALUE) out["sinr"] = ss.ssSinr
-                        out["nr"] = true
                     }
                 }
                 is CellInfoLte -> {
@@ -510,6 +523,53 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
         } catch (_: Throwable) {
             ""
         }
+    }
+
+    /** 小区广播的全部 PLMN（主 PLMN + MOCN 共建共享的 additional PLMN）。 */
+    private fun cellPlmns(ci: CellInfo): List<String> {
+        val list = ArrayList<String>()
+        val primary = normalizePlmn(cellPlmn(ci))
+        if (primary.isNotEmpty()) list.add(primary)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return list
+        try {
+            val extra = when (ci) {
+                is CellInfoNr -> (ci.cellIdentity as? CellIdentityNr)?.additionalPlmns
+                is CellInfoLte -> (ci.cellIdentity as? CellIdentityLte)?.additionalPlmns
+                else -> null
+            }
+            extra?.forEach { raw ->
+                val p = normalizePlmn(raw)
+                if (p.isNotEmpty() && !list.contains(p)) list.add(p)
+            }
+        } catch (_: Throwable) {
+        }
+        return list
+    }
+
+    /**
+     * 中国共建共享的运营商对：
+     * - 联通 46001 ↔ 电信 46011（5G 共建共享，同一基站可广播两个 PLMN）
+     * - 移动 46000 ↔ 广电 46015（700MHz 共享）
+     * 卡挂在对方基站上时，小区 PLMN 可能与核心网 PLMN 不同，但流量仍走自己核心网。
+     */
+    private fun sharedPartner(plmn: String): List<String> = when (plmn) {
+        "46001" -> listOf("46011")
+        "46011" -> listOf("46001")
+        "46000" -> listOf("46015", "46020")
+        "46015", "46020" -> listOf("46000")
+        else -> emptyList()
+    }
+
+    /** 该小区是否属于数据卡所在的网络：主 PLMN → 额外 PLMN → 共建共享对。 */
+    private fun matchCell(ci: CellInfo, dataPlmn: String): String {
+        if (dataPlmn.isEmpty()) return "unknown"
+        val plmns = cellPlmns(ci)
+        if (plmns.isEmpty()) return "unknown"
+        if (plmns.firstOrNull() == dataPlmn) return "plmn"
+        if (plmns.drop(1).contains(dataPlmn)) return "additional"
+        val partners = sharedPartner(dataPlmn)
+        if (plmns.any { partners.contains(it) }) return "shared"
+        return "none"
     }
 
     /**
@@ -774,8 +834,11 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
 
     // ------------------------------------------------------------ 蜂窝状态回调
 
+    @SuppressLint("MissingPermission")
     private fun registerTelephony() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        // 这两个回调都需要 READ_PHONE_STATE；没授权就别注册，等下次快照再试
+        if (!granted(Manifest.permission.READ_PHONE_STATE)) return
         val tm = telephony() ?: return
         try {
             val cb = object : TelephonyCallback(),
@@ -810,6 +873,8 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
                 0
             }
         } catch (_: Throwable) {
+            // 注册失败：保持 telephonyCallback 为 null，ensureTelephony() 下次会重试
+            telephonyCallback = null
         }
     }
 

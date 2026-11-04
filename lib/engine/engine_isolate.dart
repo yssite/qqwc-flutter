@@ -264,6 +264,7 @@ Future<void> _run(
     net: localIp,
     netTag: netTag,
     netKind: netKind,
+    oper: oper,
   );
   out.send({'t': 'done', 'record': record.toJson()});
   out.send({'t': 'phase', 'phase': 'done'});

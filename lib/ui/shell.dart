@@ -43,6 +43,9 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // 注意：Scaffold 会把 body 的 viewInsets.bottom 清零，所以键盘状态必须在这里
+    // （Scaffold 之上）取，再通过 BottomBarScope 告诉各页面该留多少底部空间。
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final pages = <Widget>[
       SpeedPage(onOpenNodes: () => _go(3), onOpenNetwork: () => _go(2)),
       const HistoryPage(),
@@ -51,51 +54,75 @@ class _AppShellState extends State<AppShell> {
       const SettingsPage(),
     ];
 
-    return SystemBars(
-      child: Scaffold(
-        backgroundColor: scheme.surface,
-        body: Stack(
-          children: [
-            // 背景：顶部极淡的主色晕染，营造层次而不喧宾夺主
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0, -0.55),
-                    radius: 1.1,
-                    colors: [
-                      Color.alphaBlend(
-                        scheme.primary.withValues(alpha: 0.10),
+    return BottomBarScope(
+      inset: keyboardOpen
+          ? 12
+          : 74 + MediaQuery.viewPaddingOf(context).bottom,
+      child: SystemBars(
+        child: Scaffold(
+          backgroundColor: scheme.surface,
+          body: Stack(
+            children: [
+              // 背景：顶部极淡的主色晕染，营造层次而不喧宾夺主
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -0.55),
+                      radius: 1.1,
+                      colors: [
+                        Color.alphaBlend(
+                          scheme.primary.withValues(alpha: 0.10),
+                          scheme.surface,
+                        ),
                         scheme.surface,
-                      ),
-                      scheme.surface,
-                    ],
-                    stops: const [0, 0.75],
+                      ],
+                      stops: const [0, 0.75],
+                    ),
                   ),
                 ),
               ),
-            ),
-            SafeArea(
-              bottom: false,
-              child: IndexedStack(index: _index, children: pages),
-            ),
-            // 底部导航悬浮在内容之上：内容从胶囊和手势条下面透出来，
-            // 再用一层由下往上的渐隐遮罩保证可读性。
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _FloatingBar(
-                index: _index,
-                onTap: _go,
-                surface: scheme.surface,
+              SafeArea(
+                bottom: false,
+                child: IndexedStack(index: _index, children: pages),
               ),
-            ),
-          ],
+              // 底部导航悬浮在内容之上：内容从胶囊和手势条下面透出来，
+              // 再用一层由下往上的渐隐遮罩保证可读性。
+              // 键盘弹出时收起，避免挡住输入框（配合 Scaffold 的 resizeToAvoidBottomInset）。
+              if (!keyboardOpen)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _FloatingBar(
+                    index: _index,
+                    onTap: _go,
+                    surface: scheme.surface,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// 告诉各页面底部要预留多少空间（键盘弹出时为 0，导航栏会隐藏）。
+class BottomBarScope extends InheritedWidget {
+  const BottomBarScope({
+    super.key,
+    required this.inset,
+    required super.child,
+  });
+
+  final double inset;
+
+  static double? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<BottomBarScope>()?.inset;
+
+  @override
+  bool updateShouldNotify(BottomBarScope oldWidget) => oldWidget.inset != inset;
 }
 
 class _FloatingBar extends StatelessWidget {

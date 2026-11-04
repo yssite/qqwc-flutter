@@ -72,9 +72,10 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                     Text('网络环境', style: text.titleMedium),
                     const Spacer(),
                     TextButton.icon(
-                      onPressed: () {
-                        state.refreshLink();
-                        state.refreshLocation();
+                      onPressed: () async {
+                        await state.refreshLink();
+                        await state.refreshNetInfo();
+                        await state.refreshLocation();
                       },
                       icon: const Icon(Icons.refresh_rounded, size: 16),
                       label: const Text('刷新'),
@@ -98,9 +99,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                 ),
                 _InfoRow(
                   label: '运营商',
-                  value: state.netInfo.oper.isNotEmpty
-                      ? state.netInfo.oper
-                      : (state.netInfo.isp.isEmpty ? '--' : state.netInfo.isp),
+                  value: _operLabel(state),
                 ),
                 _InfoRow(
                   label: '定位省份',
@@ -406,6 +405,23 @@ String _linkTypeLabel(LinkInfo link) {
   };
   if (link.vpn && link.kind != LinkKind.vpn) return '$base（VPN）';
   return base;
+}
+
+/// 运营商行：数据卡运营商（带卡槽）+ 出口 IP 运营商（不一致时才额外标注）
+String _operLabel(AppState state) {
+  final oper = state.effectiveOper;
+  final ipOper = state.netInfo.oper;
+  final parts = <String>[];
+  if (oper.isNotEmpty) parts.add(state.operWithSlot);
+  if (state.link.isCellular &&
+      ipOper.isNotEmpty &&
+      ipOper != oper) {
+    parts.add('出口 IP $ipOper');
+  }
+  if (parts.isEmpty) {
+    return state.netInfo.isp.isEmpty ? '--' : state.netInfo.isp;
+  }
+  return parts.join(' · ');
 }
 
 /// 定位省份行：区分「已定位」「定位中」「定位失败」「未授权」

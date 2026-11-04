@@ -150,11 +150,16 @@ class AppState extends ChangeNotifier {
     final next = await LinkService.snapshot();
     final key = _keyOf(next);
     if (key == _linkKey) return;
+    final switchedSim = next.subId != link.subId || next.kindKey != link.kindKey;
     _linkKey = key;
     link = next;
     AppLog.info('link', _lineOf(next));
     if (AppLog.verbose) unawaited(logDiagnostics(reason: 'link-change'));
     notifyListeners();
+    // 换卡 / 换接入方式后，出口 IP 与运营商都会变，必须重新探测，否则节点匹配会用旧运营商
+    if (switchedSim && _netInfoKey != '${next.subId}|${next.kindKey}') {
+      unawaited(refreshNetInfo());
+    }
   }
 
   /// 把原生侧的双卡诊断快照写进日志（详细模式与导出时调用）。
@@ -234,11 +239,25 @@ class AppState extends ChangeNotifier {
     return settings.province.isNotEmpty ? settings.province : netInfo.province;
   }
 
-  /// 运营商始终以出口 IP 识别为准（定位无法判断 Wi-Fi 出口属于哪家运营商）
+  /// 运营商：蜂窝优先用数据卡的 SIM 运营商（那才是真正在跑流量的网络），
+  /// Wi-Fi / 有线再退回出口 IP 识别 —— 家里宽带是电信、手机卡是联通时不会串。
   String get effectiveOper {
     if (settings.oper.isNotEmpty) return settings.oper;
+    if (link.isCellular) {
+      final simOper = NetInfoService.operOf(link.operatorName);
+      if (simOper.isNotEmpty) return simOper;
+    }
     if (netInfo.oper.isNotEmpty) return netInfo.oper;
     return NetInfoService.operOf(link.operatorName);
+  }
+
+  /// 芯片上显示的运营商文案：`电信 · 卡 2`
+  String get operWithSlot {
+    final oper = effectiveOper;
+    final slot = link.simSlot;
+    if (oper.isEmpty) return '';
+    if (link.isCellular && slot >= 0) return '$oper · 卡${slot + 1}';
+    return oper;
   }
 
   String get effectiveCity {
@@ -267,15 +286,20 @@ class AppState extends ChangeNotifier {
     super.dispose();
   }
 
+  /// 出口信息（IP / 归属地 / 运营商）只在探测时更新，不再写回用户偏好 ——
+  /// 否则切卡后旧运营商会被当成「手动选择」一直沿用。
+  String _netInfoKey = '';
+
   Future<void> refreshNetInfo() async {
     final info = await NetInfoService.detect();
     netInfo = info.copyWith(localIp: netInfo.localIp);
-    if (settings.province.isEmpty && info.province.isNotEmpty) {
-      settings.province = info.province;
-      settings.city = info.city;
-      settings.oper = info.oper;
-      await _persistSettings();
-    }
+    _netInfoKey = '${link.subId}|${link.kindKey}';
+    AppLog.info(
+      'net',
+      '出口 ${info.ip.isEmpty ? '--' : info.ip} · '
+          '${info.province}${info.city} · '
+          '${info.oper.isEmpty ? info.isp : info.oper}',
+    );
     notifyListeners();
   }
 
@@ -310,6 +334,10 @@ class AppState extends ChangeNotifier {
     if (live.isRunning) return;
     await disposeEngine();
     await refreshLink();
+    // 链路刚换过（比如刚切卡）而出口信息还是旧的，先补一次探测再匹配节点
+    if (_netInfoKey != '${link.subId}|${link.kindKey}') {
+      await refreshNetInfo();
+    }
     live.reset();
     live.phase = TestPhase.matching;
     live.node = node;

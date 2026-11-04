@@ -80,6 +80,7 @@ class LinkInfo {
     this.vpn = false,
     this.metered = false,
     this.subId = -1,
+    this.simSlot = -1,
     this.operatorName = '',
     this.wifi,
     this.cell,
@@ -91,6 +92,9 @@ class LinkInfo {
 
   /// 原生侧最终选中的数据卡 subscriptionId，用于日志排查双卡问题
   final int subId;
+
+  /// 数据卡所在卡槽（0 基），-1 未知
+  final int simSlot;
 
   final String operatorName;
   final WifiLink? wifi;
@@ -184,6 +188,7 @@ class LinkInfo {
       vpn: map['vpn'] == true,
       metered: map['metered'] == true,
       subId: (map['subId'] as num?)?.toInt() ?? -1,
+      simSlot: (map['simSlot'] as num?)?.toInt() ?? -1,
       operatorName: '${map['operatorName'] ?? ''}',
       wifi: wifiMap is Map
           ? WifiLink(
