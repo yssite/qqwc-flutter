@@ -10,11 +10,13 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
 import android.telephony.CellIdentityLte
@@ -64,18 +66,69 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
     private var pcIsNr = false
     private val main = Handler(Looper.getMainLooper())
 
+    // 系统网络变化回调：Wi-Fi ↔ 蜂窝、切数据卡时立刻通知 Dart 侧刷新（不用等轮询）
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastNotifyAt = 0L
+
     fun attach(messenger: BinaryMessenger) {
         val ch = MethodChannel(messenger, CHANNEL)
         ch.setMethodCallHandler(this)
         channel = ch
         ensureTelephony()
+        registerNetworkCallback()
     }
 
     fun detach() {
         channel?.setMethodCallHandler(null)
         channel = null
         unregisterTelephony()
+        unregisterNetworkCallback()
         registeredSubId = Int.MIN_VALUE
+    }
+
+    // ------------------------------------------------------------ 变化推送
+
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        try {
+            val cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? ConnectivityManager ?: return
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) = notifyChanged("available")
+                override fun onLost(network: Network) = notifyChanged("lost")
+                override fun onCapabilitiesChanged(
+                    network: Network,
+                    caps: NetworkCapabilities,
+                ) = notifyChanged("capabilities")
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            networkCallback = cb
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val cb = networkCallback ?: return
+        networkCallback = null
+        try {
+            val cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? ConnectivityManager
+            cm?.unregisterNetworkCallback(cb)
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** 400ms 内合并多次回调，避免同一个事件连发好几遍。 */
+    private fun notifyChanged(reason: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastNotifyAt < 400) return
+        lastNotifyAt = now
+        main.post {
+            try {
+                channel?.invokeMethod("linkChanged", reason)
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     // ------------------------------------------------------------ 双卡：始终跟随「数据卡」
@@ -848,6 +901,7 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
                 override fun onDisplayInfoChanged(info: TelephonyDisplayInfo) {
                     overrideNetworkType = info.overrideNetworkType
                     displayNetworkType = info.networkType
+                    notifyChanged("display")
                 }
 
                 override fun onPhysicalChannelConfigChanged(configs: MutableList<PhysicalChannelConfig>) {

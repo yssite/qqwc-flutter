@@ -129,6 +129,7 @@ class AppState extends ChangeNotifier {
   }
 
   Timer? _linkTimer;
+  StreamSubscription<String>? _linkChanges;
   String _linkKey = '';
 
   String _keyOf(LinkInfo l) =>
@@ -137,30 +138,42 @@ class AppState extends ChangeNotifier {
   String _lineOf(LinkInfo l) =>
       '${l.kindKey} sub=${l.subId} ${l.operatorName} ${l.tag} | ${l.detail}';
 
-  /// 链路信息会随漫游/热点切换变化，前台每 12 秒轻量刷新一次。
+  /// 12 秒轮询只是兜底；真正的刷新由系统回调（Wi-Fi/蜂窝切换、切卡、信号变化）即时触发。
   void _startLinkWatch() {
     _linkTimer?.cancel();
     _linkTimer = Timer.periodic(
       const Duration(seconds: 12),
       (_) => unawaited(refreshLink()),
     );
+    LinkService.init();
+    _linkChanges?.cancel();
+    _linkChanges = LinkService.changes.listen((reason) {
+      AppLog.debug('link', '系统回调：$reason');
+      unawaited(refreshLink());
+    });
   }
 
   Future<void> refreshLink() async {
     final next = await LinkService.snapshot();
     final key = _keyOf(next);
     if (key == _linkKey) return;
-    final switchedSim = next.subId != link.subId || next.kindKey != link.kindKey;
+    final prev = link;
     _linkKey = key;
     link = next;
     AppLog.info('link', _lineOf(next));
     if (AppLog.verbose) unawaited(logDiagnostics(reason: 'link-change'));
     notifyListeners();
-    // 换卡 / 换接入方式后，出口 IP 与运营商都会变，必须重新探测，否则节点匹配会用旧运营商
-    if (switchedSim && _netInfoKey != '${next.subId}|${next.kindKey}') {
+    // 换卡 / 换接入方式 / 换运营商后，出口 IP 与归属地都会变，必须重新探测，
+    // 否则节点匹配会沿用上一个网络的运营商
+    final netChanged = next.subId != prev.subId ||
+        next.kindKey != prev.kindKey ||
+        next.operatorName != prev.operatorName;
+    if (netChanged && _netInfoKey != _netKeyOf(next)) {
       unawaited(refreshNetInfo());
     }
   }
+
+  String _netKeyOf(LinkInfo l) => '${l.subId}|${l.kindKey}|${l.operatorName}';
 
   /// 把原生侧的双卡诊断快照写进日志（详细模式与导出时调用）。
   Future<void> logDiagnostics({String reason = ''}) async {
@@ -282,6 +295,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _linkTimer?.cancel();
+    _linkChanges?.cancel();
     unawaited(disposeEngine());
     super.dispose();
   }
@@ -293,7 +307,7 @@ class AppState extends ChangeNotifier {
   Future<void> refreshNetInfo() async {
     final info = await NetInfoService.detect();
     netInfo = info.copyWith(localIp: netInfo.localIp);
-    _netInfoKey = '${link.subId}|${link.kindKey}';
+    _netInfoKey = _netKeyOf(link);
     AppLog.info(
       'net',
       '出口 ${info.ip.isEmpty ? '--' : info.ip} · '
@@ -335,7 +349,7 @@ class AppState extends ChangeNotifier {
     await disposeEngine();
     await refreshLink();
     // 链路刚换过（比如刚切卡）而出口信息还是旧的，先补一次探测再匹配节点
-    if (_netInfoKey != '${link.subId}|${link.kindKey}') {
+    if (_netInfoKey != _netKeyOf(link)) {
       await refreshNetInfo();
     }
     live.reset();

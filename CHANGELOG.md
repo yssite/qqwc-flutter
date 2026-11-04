@@ -2,6 +2,15 @@
 
 版本号与 Release 一致，APK 见 [Releases](https://github.com/yssite/qqwc-flutter/releases)。
 
+## v1.2.5
+
+- 链路变化改为**事件驱动**：原生 ConnectivityManager.registerDefaultNetworkCallback 与
+  TelephonyCallback（DisplayInfo / PhysicalChannelConfig）直接 push 给 Dart，Wi-Fi ↔ 蜂窝、切卡后界面立即更新
+- 12 秒轮询保留为兜底（回调漏发或 ROM 限制时仍能纠正）
+- 运营商变化也会触发重新探测出口 IP / 归属地
+- 新增 	est/link_events_test.dart（事件通道 → 变化流）
+- README 精简：三图并排 + 亮点说明，更新记录独立到本文件
+
 ## v1.2.4
 
 - 修复运营商一直显示错误的根因：`AppSettings.fromJson` 漏读 `schema`，构造函数默认值又是 2，

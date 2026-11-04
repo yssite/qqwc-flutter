@@ -4,6 +4,8 @@
 /// 任何字段拿不到时保持默认值，由 UI 决定是否隐藏，绝不影响测速主流程。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 
 import 'province_geo.dart';
@@ -269,6 +271,24 @@ class LinkService {
   LinkService._();
 
   static const _channel = MethodChannel('globalspeed/netlink');
+
+  static final _changes = StreamController<String>.broadcast();
+  static bool _listening = false;
+
+  /// 原生侧推送的链路变化（Wi-Fi ↔ 蜂窝、切卡、信号回调），用于即时刷新。
+  static Stream<String> get changes => _changes.stream;
+
+  /// 只需调用一次；重复调用安全。
+  static void init() {
+    if (_listening) return;
+    _listening = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'linkChanged') {
+        _changes.add('${call.arguments ?? ''}');
+      }
+      return null;
+    });
+  }
 
   static Future<LinkInfo> snapshot() async {
     try {
