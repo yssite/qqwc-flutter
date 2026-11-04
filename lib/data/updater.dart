@@ -39,6 +39,22 @@ class UpdateInfo {
   final List<UpdateAsset> assets;
 }
 
+class UpdateCheckResult {
+  const UpdateCheckResult.ok(this.info)
+      : ok = true,
+        error = '';
+
+  const UpdateCheckResult.failed(this.error)
+      : ok = false,
+        info = null;
+
+  final UpdateInfo? info;
+  final bool ok;
+  final String error;
+
+  bool get hasUpdate => ok && info != null;
+}
+
 class Updater {
   Updater._();
 
@@ -49,6 +65,13 @@ class Updater {
       'https://api.github.com/repos/$repo/releases/latest';
 
   static const _channel = MethodChannel('globalspeed/updater');
+
+  /// GitHub 加速镜像（按顺序尝试）。资源路径直接用「镜像前缀 + 原始 URL」。
+  /// gh-proxy.com 的证书近期过期，因此默认用 ghfast.top，它支持 Range 分段请求。
+  static const List<String> mirrors = [
+    'https://ghfast.top/',
+    'https://gh-proxy.com/',
+  ];
 
   /// 当前设备 ABI（如 arm64-v8a），取不到返回空。
   static Future<List<String>> abis() async {
@@ -95,8 +118,9 @@ class Updater {
     }
   }
 
-  /// 查询最新 Release。返回 null 表示已是最新或查询失败（error 里有原因）。
-  static Future<UpdateInfo?> checkLatest({
+  /// 查询最新 Release。
+  /// [UpdateCheckResult.ok] 为 false 表示网络/接口失败（不能据此认为「已是最新」）。
+  static Future<UpdateCheckResult> checkLatest({
     required String currentVersion,
   }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
@@ -107,13 +131,15 @@ class Updater {
       final res = await req.close().timeout(const Duration(seconds: 10));
       if (res.statusCode != 200) {
         AppLog.warn('update', 'GitHub API ${res.statusCode}');
-        return null;
+        return UpdateCheckResult.failed('GitHub API ${res.statusCode}');
       }
       final text = await res.transform(utf8.decoder).join();
       final map = jsonDecode(text) as Map<String, dynamic>;
       final tag = '${map['tag_name'] ?? ''}';
       final version = tag.replaceFirst(RegExp(r'^v'), '');
-      if (version.isEmpty) return null;
+      if (version.isEmpty) {
+        return UpdateCheckResult.failed('Release 缺少版本号');
+      }
       final assets = <UpdateAsset>[];
       for (final item in (map['assets'] as List<dynamic>? ?? const [])) {
         final a = (item as Map).cast<String, dynamic>();
@@ -132,11 +158,13 @@ class Updater {
         assets: assets,
       );
       AppLog.info('update', '最新版本 $version，资源 ${assets.length} 个');
-      if (!isNewer(version, currentVersion)) return null;
-      return info;
+      if (!isNewer(version, currentVersion)) {
+        return const UpdateCheckResult.ok(null);
+      }
+      return UpdateCheckResult.ok(info);
     } catch (e) {
       AppLog.warn('update', '检查更新失败：$e');
-      return null;
+      return UpdateCheckResult.failed('$e');
     } finally {
       client.close(force: true);
     }
@@ -189,9 +217,46 @@ class Updater {
     }
   }
 
-  /// 多线程分段下载（GitHub 直连慢，分段并发能明显提速）。
+  /// 多线程分段下载。直连失败会自动换镜像重试；[preferMirror] 为 true 时直接用镜像。
   static Future<File> download(
     UpdateAsset asset, {
+    void Function(int received, int total)? onProgress,
+    bool Function()? isCanceled,
+    int threads = 6,
+    bool preferMirror = false,
+  }) async {
+    final candidates = <String>[
+      if (!preferMirror) asset.url,
+      for (final m in mirrors) '$m${asset.url}',
+      if (preferMirror) asset.url,
+    ];
+
+    Object? lastError;
+    for (var i = 0; i < candidates.length; i++) {
+      if (isCanceled?.call() == true) throw const _Canceled();
+      final url = candidates[i];
+      try {
+        AppLog.info('update', '下载源 ${i + 1}/${candidates.length}：$url');
+        return await _downloadFrom(
+          asset,
+          url,
+          onProgress: onProgress,
+          isCanceled: isCanceled,
+          threads: threads,
+        );
+      } on _Canceled {
+        rethrow;
+      } catch (e) {
+        lastError = e;
+        AppLog.warn('update', '下载源失败：$url → $e');
+      }
+    }
+    throw lastError ?? Exception('所有下载源都失败了');
+  }
+
+  static Future<File> _downloadFrom(
+    UpdateAsset asset,
+    String url, {
     void Function(int received, int total)? onProgress,
     bool Function()? isCanceled,
     int threads = 6,
@@ -200,7 +265,7 @@ class Updater {
     final target = File('${dir.path}/update-${asset.name}');
     if (await target.exists()) await target.delete();
 
-    final total = await _probeSize(asset.url, fallback: asset.size);
+    final total = await _probeSize(url, fallback: asset.size);
     final usable = total > 1024 * 1024;
     final count = usable ? math.min(threads, 8) : 1;
 
@@ -215,7 +280,7 @@ class Updater {
       final client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 10);
       try {
-        final req = await client.getUrl(Uri.parse(asset.url));
+        final req = await client.getUrl(Uri.parse(url));
         req.headers.set(HttpHeaders.userAgentHeader, 'FlutterWangCe');
         req.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-$end');
         final res = await req.close();

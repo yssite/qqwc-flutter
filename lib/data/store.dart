@@ -28,6 +28,7 @@ class AppSettings {
     this.verboseLog = false,
     this.schema = 3,
     this.autoCheckUpdate = true,
+    this.useUpdateMirror = false,
     this.lastUpdateCheck = 0,
   });
 
@@ -58,6 +59,9 @@ class AppSettings {
   /// 上次检查更新时间（epoch 秒），用于避免每次启动都请求 GitHub
   int lastUpdateCheck;
 
+  /// 下载更新时优先走镜像（GitHub 直连不通时用）
+  bool useUpdateMirror;
+
   /// 设置结构版本，用于一次性迁移（v2：清掉旧版误存的自动运营商）
   int schema;
 
@@ -77,6 +81,7 @@ class AppSettings {
     'permissionsAsked': permissionsAsked,
     'verboseLog': verboseLog,
     'autoCheckUpdate': autoCheckUpdate,
+    'useUpdateMirror': useUpdateMirror,
     'lastUpdateCheck': lastUpdateCheck,
     'schema': schema,
   };
@@ -97,6 +102,7 @@ class AppSettings {
     permissionsAsked: j['permissionsAsked'] as bool? ?? false,
     verboseLog: j['verboseLog'] as bool? ?? false,
     autoCheckUpdate: j['autoCheckUpdate'] as bool? ?? true,
+    useUpdateMirror: j['useUpdateMirror'] as bool? ?? false,
     lastUpdateCheck: (j['lastUpdateCheck'] as num?)?.toInt() ?? 0,
     // 旧数据没有该字段 → 0，触发下面的迁移（清掉旧版自动写入的运营商）
     schema: (j['schema'] as num?)?.toInt() ?? 0,

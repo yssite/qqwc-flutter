@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app.dart';
+import '../core/app_log.dart';
 import '../data/update_service.dart';
 import 'pages/diagnostics_page.dart';
 import 'pages/history_page.dart';
@@ -35,17 +36,31 @@ class _AppShellState extends State<AppShell> {
     final state = AppScope.of(context, listen: false);
     if (!state.settings.autoCheckUpdate) return;
     final lastTs = state.settings.lastUpdateCheck;
-    await UpdateService.instance.check(
+    var ok = await UpdateService.instance.check(
       currentVersion: state.version.name,
       dueOnly: true,
-      lastCheck: lastTs > 0
-          ? DateTime.fromMillisecondsSinceEpoch(lastTs * 1000)
-          : null,
+      lastCheck:
+          lastTs > 0 ? DateTime.fromMillisecondsSinceEpoch(lastTs * 1000) : null,
     );
+
+    // 冷启动时网络可能还没就绪，失败就隔 10 秒再试一次（不算「已检查」）
+    if (!ok && mounted) {
+      AppLog.info('update', '启动检查失败，10 秒后重试');
+      await Future<void>.delayed(const Duration(seconds: 10));
+      if (!mounted) return;
+      ok = await UpdateService.instance.check(
+        currentVersion: state.version.name,
+      );
+    }
     if (!mounted) return;
-    await state.updateSettings(
-      (s) => s.lastUpdateCheck = DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    );
+
+    // 只有真正拿到结果才记录时间，否则一次失败会让自动检查停摆 6 小时
+    if (ok) {
+      await state.updateSettings(
+        (s) =>
+            s.lastUpdateCheck = DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
+    }
     if (!mounted || UpdateService.instance.info == null) return;
     showUpdateBanner(context);
   }

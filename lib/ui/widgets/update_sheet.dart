@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../app.dart';
 import '../../data/update_service.dart';
 import 'markdown_text.dart';
 
@@ -108,49 +109,70 @@ class UpdateSheet extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 20),
+              // 主按钮单独一行：窄屏下并排会把「下载并安装」折成两行
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: s.busy ? null : s.primaryAction,
+                  icon: Icon(
+                    s.phase == UpdatePhase.ready
+                        ? Icons.install_mobile_rounded
+                        : Icons.download_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    s.phase == UpdatePhase.downloading
+                        ? '下载中…'
+                        : s.phase == UpdatePhase.ready
+                            ? '安装'
+                            : '下载并安装',
+                  ),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 50),
+                    shape: const StadiumBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
               Row(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        if (s.phase == UpdatePhase.downloading) {
-                          s.cancelDownload();
-                        } else {
-                          s.openReleasePage();
-                        }
-                      },
-                      icon: Icon(
-                        s.phase == UpdatePhase.downloading
-                            ? Icons.close_rounded
-                            : Icons.open_in_new_rounded,
-                        size: 18,
-                      ),
-                      label: Text(
-                        s.phase == UpdatePhase.downloading ? '取消下载' : '在浏览器打开',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 50),
-                        shape: const StadiumBorder(),
-                      ),
+                  TextButton.icon(
+                    onPressed: () {
+                      if (s.phase == UpdatePhase.downloading) {
+                        s.cancelDownload();
+                      } else {
+                        s.openReleasePage();
+                      }
+                    },
+                    icon: Icon(
+                      s.phase == UpdatePhase.downloading
+                          ? Icons.close_rounded
+                          : Icons.open_in_new_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      s.phase == UpdatePhase.downloading ? '取消下载' : '在浏览器打开',
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: s.busy ? null : s.primaryAction,
-                      icon: const Icon(Icons.download_rounded, size: 18),
-                      label: Text(
-                        s.phase == UpdatePhase.downloading
-                            ? '下载中…'
-                            : s.phase == UpdatePhase.ready
-                                ? '安装'
-                                : '下载并安装',
+                  const Spacer(),
+                  // GitHub 连不上时可以直接走镜像
+                  Row(
+                    children: [
+                      Text(
+                        '镜像下载',
+                        style: text.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 50),
-                        shape: const StadiumBorder(),
+                      Switch.adaptive(
+                        value: s.preferMirror,
+                        onChanged: (v) {
+                          s.setPreferMirror(v);
+                          AppScope.of(context, listen: false)
+                              .updateSettings((st) => st.useUpdateMirror = v);
+                        },
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),

@@ -157,7 +157,7 @@ class UpdateCard extends StatelessWidget {
                   value: autoCheck,
                   onChanged: onAutoCheckChanged,
                 ),
-              if (s.phase == UpdatePhase.latest)
+              if (s.phase == UpdatePhase.latest && s.message.isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
@@ -192,7 +192,7 @@ class UpdateCard extends StatelessWidget {
   static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
 }
 
-/// 启动时检测到新版本时显示的提示条：`检测到新版本：1.3.0   详情 / 更新`
+/// 启动时检测到新版本时显示的提示条：`检测到新版本：1.3.2   详情 / 更新`
 void showUpdateBanner(BuildContext context) {
   final s = UpdateService.instance;
   final info = s.info;
@@ -200,11 +200,29 @@ void showUpdateBanner(BuildContext context) {
   final scheme = Theme.of(context).colorScheme;
   final text = Theme.of(context).textTheme;
 
+  // SnackBar 默认用 inverseSurface（深色主题下是浅底），所以文字与按钮颜色必须显式指定，
+  // 否则会出现「浅底 + 浅字」看不见的问题。
+  final actionStyle = TextButton.styleFrom(
+    foregroundColor: scheme.primary,
+    minimumSize: const Size(0, 34),
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    textStyle: text.labelLarge,
+  );
+
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       duration: const Duration(seconds: 10),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: scheme.surfaceContainerHigh,
+      elevation: 0,
       // 抬到底部导航栏之上，避免被胶囊挡住
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 92),
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
       content: Row(
         children: [
           Icon(Icons.new_releases_rounded, size: 18, color: scheme.primary),
@@ -212,12 +230,13 @@ void showUpdateBanner(BuildContext context) {
           Expanded(
             child: Text(
               '检测到新版本：${info.version}',
-              style: text.bodyMedium,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: text.bodyMedium?.copyWith(color: scheme.onSurface),
             ),
           ),
           TextButton(
+            style: actionStyle,
             onPressed: () {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               showUpdateSheet(context);
@@ -225,6 +244,7 @@ void showUpdateBanner(BuildContext context) {
             child: const Text('详情'),
           ),
           TextButton(
+            style: actionStyle,
             onPressed: () {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               s.download();

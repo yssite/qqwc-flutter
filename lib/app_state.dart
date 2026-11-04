@@ -13,6 +13,7 @@ import '../core/app_log.dart';
 import '../core/node.dart';
 import '../data/link_service.dart';
 import '../data/store.dart';
+import '../data/update_service.dart';
 import '../engine/engine_controller.dart';
 import '../engine/models.dart';
 
@@ -120,6 +121,7 @@ class AppState extends ChangeNotifier {
       '定位=${permissions.location} 电话=${permissions.phone}',
     );
     _linkKey = _keyOf(link);
+    UpdateService.instance.preferMirror = settings.useUpdateMirror;
     AppLog.info('link', _lineOf(link));
     notifyListeners();
     unawaited(refreshNetInfo());
