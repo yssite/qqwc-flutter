@@ -2,12 +2,14 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/app_log.dart';
 import '../core/node.dart';
 import '../data/link_service.dart';
 import '../data/store.dart';
@@ -59,6 +61,7 @@ class AppState extends ChangeNotifier {
 
   static Future<AppState> create() async {
     final settings = await SettingsStore.load();
+    await AppLog.init(verbose: settings.verboseLog);
     final state = AppState._(settings);
     await state._bootstrap();
     return state;
@@ -108,14 +111,31 @@ class AppState extends ChangeNotifier {
     permissions = results[3] as LinkPermissions;
     link = results[4] as LinkInfo;
     version = results[5] as AppVersion;
+    AppLog.info(
+      'app',
+      '启动 ${version.display} · ${settings.model} · 节点 ${nodes.length} 条',
+    );
+    AppLog.info(
+      'perm',
+      '定位=${permissions.location} 电话=${permissions.phone}',
+    );
+    _linkKey = _keyOf(link);
+    AppLog.info('link', _lineOf(link));
     notifyListeners();
     unawaited(refreshNetInfo());
     if (permissions.location) unawaited(refreshLocation());
+    if (AppLog.verbose) unawaited(logDiagnostics(reason: 'startup'));
     _startLinkWatch();
   }
 
   Timer? _linkTimer;
   String _linkKey = '';
+
+  String _keyOf(LinkInfo l) =>
+      '${l.kindKey}|${l.tag}|${l.detail}|${l.operatorName}|${l.vpn}|${l.subId}';
+
+  String _lineOf(LinkInfo l) =>
+      '${l.kindKey} sub=${l.subId} ${l.operatorName} ${l.tag} | ${l.detail}';
 
   /// 链路信息会随漫游/热点切换变化，前台每 12 秒轻量刷新一次。
   void _startLinkWatch() {
@@ -128,11 +148,48 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshLink() async {
     final next = await LinkService.snapshot();
-    final key =
-        '${next.kindKey}|${next.tag}|${next.detail}|${next.operatorName}|${next.vpn}';
+    final key = _keyOf(next);
     if (key == _linkKey) return;
     _linkKey = key;
     link = next;
+    AppLog.info('link', _lineOf(next));
+    if (AppLog.verbose) unawaited(logDiagnostics(reason: 'link-change'));
+    notifyListeners();
+  }
+
+  /// 把原生侧的双卡诊断快照写进日志（详细模式与导出时调用）。
+  Future<void> logDiagnostics({String reason = ''}) async {
+    try {
+      final map = await LinkService.debugSnapshot();
+      AppLog.info(
+        'diag',
+        '${reason.isEmpty ? '' : '[$reason] '}${jsonEncode(map)}',
+      );
+    } catch (e) {
+      AppLog.warn('diag', '诊断快照获取失败：$e');
+    }
+  }
+
+  /// 导出日志（设置页「导出」按钮）
+  Future<File> exportLogs() async {
+    await logDiagnostics(reason: 'export');
+    final node = live.node;
+    final header = [
+      '版本 ${version.display}',
+      '链路 ${_lineOf(link)}',
+      '权限 定位=${permissions.location} 电话=${permissions.phone}',
+      '省份 $effectiveProvince（来源 $provinceSource）· 运营商 $effectiveOper',
+      '节点 ${node == null ? '-' : '${node.hostname} ${node.hostip}:${node.port}'}',
+      '详细日志 ${AppLog.verbose ? '开' : '关'}',
+    ].join('\n');
+    final file = await AppLog.export(header: header);
+    AppLog.info('log', '导出日志 ${file.path}');
+    return file;
+  }
+
+  Future<void> clearLogs() async {
+    await AppLog.clear();
+    AppLog.info('log', '日志已清空');
     notifyListeners();
   }
 
@@ -140,9 +197,15 @@ class AppState extends ChangeNotifier {
     final next = await LinkService.locate();
     locationTried = true;
     if (next == null) {
+      AppLog.info('geo', '定位失败');
       notifyListeners();
       return;
     }
+    AppLog.info(
+      'geo',
+      '定位 ${next.province} ${next.city} '
+          '(${next.lat.toStringAsFixed(4)},${next.lng.toStringAsFixed(4)})',
+    );
     final changed =
         place?.province != next.province || place?.city != next.city;
     place = next;
@@ -152,6 +215,10 @@ class AppState extends ChangeNotifier {
   /// 申请定位 / 电话权限，结束后刷新链路与所在地。
   Future<LinkPermissions> requestPermissions() async {
     permissions = await LinkService.requestPermissions();
+    AppLog.info(
+      'perm',
+      '申请结果 定位=${permissions.location} 电话=${permissions.phone}',
+    );
     notifyListeners();
     if (permissions.location) await refreshLocation();
     await refreshLink();
@@ -246,6 +313,11 @@ class AppState extends ChangeNotifier {
     live.reset();
     live.phase = TestPhase.matching;
     live.node = node;
+    AppLog.info(
+      'test',
+      '开始测速 省份=$effectiveProvince($provinceSource) 运营商=$effectiveOper '
+          '链路=${link.tag} 节点=${node?.hostname ?? '自动'}',
+    );
     notifyListeners();
 
     final request = EngineRequest(
@@ -273,9 +345,10 @@ class AppState extends ChangeNotifier {
       final sub = handle.events.listen(_onEvent);
       _engineSubscription = sub;
       if (node != null) _rememberNode(node);
-    } catch (e) {
+    } catch (e, st) {
       live.phase = TestPhase.failed;
       live.error = '引擎启动失败：$e';
+      AppLog.error('test', '引擎启动失败', e, st);
       notifyListeners();
     }
   }
@@ -287,6 +360,7 @@ class AppState extends ChangeNotifier {
       case EnginePhase(:final phase, :final note):
         live.phase = phase;
         live.note = note;
+        AppLog.info('test', '阶段 ${phase.name}${note == null ? '' : ' · $note'}');
         if (phase == TestPhase.download) {
           live.liveUpload = false;
           live.liveSpeed = 0;
@@ -298,9 +372,19 @@ class AppState extends ChangeNotifier {
         live.node = node;
         live.candidateCount = candidates;
         _rememberNode(node);
+        AppLog.info(
+          'test',
+          '选中节点 ${node.hostname} ${node.hostip}:${node.port} '
+              '(候选 $candidates)',
+        );
       case EnginePing(:final ping, :final dnsMs):
         live.ping = ping;
         live.dnsMs = dnsMs;
+        AppLog.info(
+          'test',
+          '延迟 ${ping.avg.toStringAsFixed(1)}ms 抖动 ${ping.jitter.toStringAsFixed(1)}ms '
+              '丢包 ${ping.loss.toStringAsFixed(0)}% DNS ${dnsMs.toStringAsFixed(1)}ms',
+        );
       case EngineSample(:final upload, :final sample):
         if (upload) {
           live.upSamples.add(sample);
@@ -311,6 +395,11 @@ class AppState extends ChangeNotifier {
         }
         live.liveSpeed = sample.speed;
         live.elapsedMs = sample.elapsedMs;
+        AppLog.debug(
+          'test',
+          '${upload ? '上行' : '下行'}采样 ${sample.speed.toStringAsFixed(1)}Mbps '
+              '@${sample.elapsedMs}ms',
+        );
       case EnginePhaseResult(:final upload, :final phase):
         if (upload) {
           live.upResult = phase;
@@ -318,10 +407,21 @@ class AppState extends ChangeNotifier {
           live.downResult = phase;
         }
         live.liveSpeed = 0;
+        AppLog.info(
+          'test',
+          '${upload ? '上行' : '下行'}完成 avg=${phase.avg.toStringAsFixed(1)} '
+              'max=${phase.max.toStringAsFixed(1)} 采样=${phase.samples.length}',
+        );
       case EngineDone(:final record):
         live.result = record;
         live.phase = TestPhase.done;
         live.liveSpeed = 0;
+        AppLog.info(
+          'test',
+          '完成 下行=${record.down.avg.toStringAsFixed(1)} '
+              '上行=${record.up.avg.toStringAsFixed(1)} 评分=${record.score}'
+              '${record.grade} 链路=${record.netTag}',
+        );
         _pushHistory(record);
         HapticFeedback.mediumImpact();
         unawaited(disposeEngine());
@@ -329,11 +429,13 @@ class AppState extends ChangeNotifier {
         live.phase = TestPhase.failed;
         live.error = message;
         live.liveSpeed = 0;
+        AppLog.error('test', '测速失败：$message');
         HapticFeedback.heavyImpact();
         unawaited(disposeEngine());
       case EngineCanceled():
         live.phase = TestPhase.canceled;
         live.liveSpeed = 0;
+        AppLog.info('test', '用户取消');
         unawaited(disposeEngine());
     }
     notifyListeners();

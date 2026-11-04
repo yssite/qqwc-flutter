@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.Looper
 import android.telephony.CellIdentityLte
 import android.telephony.CellIdentityNr
+import android.telephony.CellInfo
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellSignalStrengthLte
@@ -79,11 +80,77 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
 
     // ------------------------------------------------------------ 双卡：始终跟随「数据卡」
 
-    /** 当前数据卡的 subscriptionId；取不到时退回默认值。 */
-    private fun dataSubId(): Int = try {
-        SubscriptionManager.getDefaultDataSubscriptionId()
-    } catch (_: Throwable) {
-        SubscriptionManager.DEFAULT_SUBSCRIPTION_ID
+    /**
+     * 当前承载数据的 subscriptionId。
+     *
+     * 分层判断，避免任何单一 API 在某些 ROM 上「永远是同一张卡」：
+     * 1. 当前活动网络自己声明的 subId 集合（`NetworkCapabilities.getSubscriptionIds()`）；
+     * 2. 系统默认数据卡 —— 但必须验证它真的连着数据；
+     * 3. 遍历活动卡，挑 `dataState` 已连接 / 上报了数据制式的那张；
+     * 4. 都不行才退回默认值。
+     */
+    @SuppressLint("MissingPermission")
+    private fun activeDataSubId(): Int {
+        val candidates = ArrayList<Int>()
+        try {
+            val cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+                caps?.subscriptionIds?.forEach { if (it >= 0) candidates.add(it) }
+            }
+        } catch (_: Throwable) {
+        }
+        if (candidates.size == 1) return candidates[0]
+        if (candidates.size > 1) {
+            return candidates.firstOrNull { hasDataOn(it) } ?: candidates[0]
+        }
+
+        val def = try {
+            SubscriptionManager.getDefaultDataSubscriptionId()
+        } catch (_: Throwable) {
+            SubscriptionManager.DEFAULT_SUBSCRIPTION_ID
+        }
+        // 默认数据卡只有在「确实连着数据」时才采信，否则继续往下扫
+        if (def >= 0 && dataConnected(def)) return def
+
+        val actives = try {
+            val sm = activity.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
+                as? SubscriptionManager
+            sm?.activeSubscriptionInfoList?.map { it.subscriptionId } ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        actives.firstOrNull { dataConnected(it) }?.let { return it }
+        actives.firstOrNull { hasDataOn(it) }?.let { return it }
+        return def
+    }
+
+    /** 该卡是否处于「数据已连接」状态（DSDS 下只有数据卡成立）。 */
+    @SuppressLint("MissingPermission")
+    private fun dataConnected(subId: Int): Boolean {
+        if (subId < 0) return false
+        val base = activity.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            ?: return false
+        return try {
+            base.createForSubscriptionId(subId).dataState == TelephonyManager.DATA_CONNECTED
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** 宽松判断：有数据连接或上报了数据制式。 */
+    @SuppressLint("MissingPermission")
+    private fun hasDataOn(subId: Int): Boolean {
+        if (subId < 0) return false
+        val base = activity.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            ?: return false
+        return try {
+            val tm = base.createForSubscriptionId(subId)
+            tm.dataState == TelephonyManager.DATA_CONNECTED ||
+                tm.dataNetworkType != TelephonyManager.NETWORK_TYPE_UNKNOWN
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     /**
@@ -93,7 +160,7 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
     private fun telephony(): TelephonyManager? {
         val base = activity.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
             ?: return null
-        val subId = dataSubId()
+        val subId = activeDataSubId()
         if (subId < 0) return base
         return try {
             base.createForSubscriptionId(subId)
@@ -104,7 +171,7 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
 
     /** 数据卡变了就重新注册回调，保证 DisplayInfo / PhysicalChannelConfig 都跟着新卡。 */
     private fun ensureTelephony() {
-        val subId = dataSubId()
+        val subId = activeDataSubId()
         if (subId == registeredSubId) return
         unregisterTelephony()
         registeredSubId = subId
@@ -118,6 +185,7 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
             "request" -> requestPermissions(result)
             "location" -> location(result)
             "version" -> result.success(versionMap())
+            "debug" -> result.success(debugInfo())
             else -> result.notImplemented()
         }
     }
@@ -215,6 +283,7 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
         out["type"] = type
         out["vpn"] = vpnActive && type != "vpn"
         out["metered"] = metered
+        out["subId"] = activeDataSubId()
         out["operatorName"] = operatorName()
 
         if (type == "cellular" || type == "vpn") {
@@ -354,11 +423,27 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
             null
         } ?: return out
 
-        // 只认数据卡所在的那张网：优先「已注册」，再按 PhysicalChannelConfig 的制式过滤
+        // 只认数据卡所在的那张网：先按 PLMN 过滤掉另一张卡的邻区，再按制式挑服务小区
+        val plmn = normalizePlmn(
+            try {
+                tm.networkOperator.orEmpty()
+            } catch (_: Throwable) {
+                ""
+            },
+        )
+        out["plmn"] = plmn
         val registered = cells.filter { it.isRegistered }
-        val target = registered.firstOrNull {
+        val sameCarrier = if (plmn.isEmpty()) {
+            registered
+        } else {
+            registered.filter { normalizePlmn(cellPlmn(it)) == plmn }
+        }
+        val pool = if (sameCarrier.isNotEmpty()) sameCarrier else registered
+        out["cellCount"] = cells.size
+        out["sameCarrierCount"] = pool.size
+        val target = pool.firstOrNull {
             (pcIsNr && it is CellInfoNr) || (!pcIsNr && it is CellInfoLte)
-        } ?: registered.firstOrNull()
+        } ?: pool.firstOrNull()
 
         for (ci in listOfNotNull(target)) {
             when (ci) {
@@ -398,6 +483,141 @@ class NetLink(private val activity: Activity) : MethodChannel.MethodCallHandler 
                     }
                 }
             }
+        }
+        return out
+    }
+
+    // ------------------------------------------------------------ 双卡诊断
+
+    /** MCC+MNC 归一化：不同卡上报的 MNC 可能是 2 位或 3 位，比较前 5 位即可。 */
+    private fun normalizePlmn(raw: String): String =
+        raw.filter { it.isDigit() }.take(5)
+
+    private fun cellPlmn(ci: CellInfo): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return ""
+        return try {
+            when (ci) {
+                is CellInfoNr -> {
+                    val id = ci.cellIdentity as? CellIdentityNr
+                    if (id == null) "" else "${id.mccString.orEmpty()}${id.mncString.orEmpty()}"
+                }
+                is CellInfoLte -> {
+                    val id = ci.cellIdentity as? CellIdentityLte
+                    if (id == null) "" else "${id.mccString.orEmpty()}${id.mncString.orEmpty()}"
+                }
+                else -> ""
+            }
+        } catch (_: Throwable) {
+            ""
+        }
+    }
+
+    /**
+     * 详细诊断快照：双卡相关的一切都列出来，配套 App 的「详细日志」导出用。
+     */
+    @SuppressLint("MissingPermission")
+    private fun debugInfo(): Map<String, Any?> {
+        val out = HashMap<String, Any?>()
+        out["build"] = mapOf(
+            "manufacturer" to Build.MANUFACTURER,
+            "model" to Build.MODEL,
+            "sdk" to Build.VERSION.SDK_INT,
+            "release" to Build.VERSION.RELEASE,
+        )
+        out["defaultDataSubId"] = try {
+            SubscriptionManager.getDefaultDataSubscriptionId()
+        } catch (_: Throwable) {
+            -1
+        }
+        out["defaultSubId"] = try {
+            SubscriptionManager.getDefaultSubscriptionId()
+        } catch (_: Throwable) {
+            -1
+        }
+        out["activeDataSubId"] = try {
+            activeDataSubId()
+        } catch (_: Throwable) {
+            -1
+        }
+        out["registeredSubId"] = registeredSubId
+
+        val subs = ArrayList<Map<String, Any?>>()
+        try {
+            val sm = activity.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
+                as? SubscriptionManager
+            sm?.activeSubscriptionInfoList?.forEach { info ->
+                subs.add(
+                    mapOf(
+                        "subId" to info.subscriptionId,
+                        "slot" to info.simSlotIndex,
+                        "carrier" to info.carrierName?.toString().orEmpty(),
+                        "display" to info.displayName?.toString().orEmpty(),
+                    ),
+                )
+            }
+        } catch (_: Throwable) {
+        }
+        out["subscriptions"] = subs
+
+        val tm = telephony()
+        if (tm != null) {
+            out["simOperator"] = try {
+                tm.simOperator
+            } catch (_: Throwable) {
+                ""
+            }
+            out["simOperatorName"] = try {
+                tm.simOperatorName
+            } catch (_: Throwable) {
+                ""
+            }
+            out["networkOperator"] = try {
+                tm.networkOperator
+            } catch (_: Throwable) {
+                ""
+            }
+            out["networkOperatorName"] = try {
+                tm.networkOperatorName
+            } catch (_: Throwable) {
+                ""
+            }
+            out["dataNetworkType"] = try {
+                tm.dataNetworkType
+            } catch (_: Throwable) {
+                -1
+            }
+            val cells = ArrayList<Map<String, Any?>>()
+            try {
+                tm.allCellInfo?.forEach { ci ->
+                    cells.add(
+                        mapOf(
+                            "type" to when (ci) {
+                                is CellInfoNr -> "nr"
+                                is CellInfoLte -> "lte"
+                                else -> "other"
+                            },
+                            "registered" to ci.isRegistered,
+                            "plmn" to cellPlmn(ci),
+                            "level" to ci.cellSignalStrength.level,
+                        ),
+                    )
+                }
+            } catch (_: Throwable) {
+            }
+            out["cells"] = cells
+        }
+        out["pc"] = mapOf(
+            "bandwidthKhz" to pcBandwidthKhz,
+            "band" to pcBand,
+            "isNr" to pcIsNr,
+            "override" to overrideNetworkType,
+            "displayType" to displayNetworkType,
+        )
+        out["transport"] = try {
+            val cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            cm?.getNetworkCapabilities(cm.activeNetwork)?.transportInfo?.toString().orEmpty()
+        } catch (_: Throwable) {
+            ""
         }
         return out
     }

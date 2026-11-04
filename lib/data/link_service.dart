@@ -79,6 +79,7 @@ class LinkInfo {
     this.kind = LinkKind.none,
     this.vpn = false,
     this.metered = false,
+    this.subId = -1,
     this.operatorName = '',
     this.wifi,
     this.cell,
@@ -87,6 +88,10 @@ class LinkInfo {
   final LinkKind kind;
   final bool vpn;
   final bool metered;
+
+  /// 原生侧最终选中的数据卡 subscriptionId，用于日志排查双卡问题
+  final int subId;
+
   final String operatorName;
   final WifiLink? wifi;
   final CellLink? cell;
@@ -178,6 +183,7 @@ class LinkInfo {
       kind: kind,
       vpn: map['vpn'] == true,
       metered: map['metered'] == true,
+      subId: (map['subId'] as num?)?.toInt() ?? -1,
       operatorName: '${map['operatorName'] ?? ''}',
       wifi: wifiMap is Map
           ? WifiLink(
@@ -296,6 +302,16 @@ class LinkService {
       );
     } catch (_) {
       return const AppVersion();
+    }
+  }
+
+  /// 双卡 / 制式相关的完整诊断快照，用于导出日志。
+  static Future<Map<String, dynamic>> debugSnapshot() async {
+    try {
+      final map = await _channel.invokeMapMethod<String, dynamic>('debug');
+      return map ?? const <String, dynamic>{};
+    } catch (_) {
+      return const <String, dynamic>{};
     }
   }
 

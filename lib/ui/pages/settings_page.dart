@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app.dart';
+import '../../app_state.dart';
+import '../../core/app_log.dart';
 import '../../core/node.dart';
 import '../permission_sheet.dart';
 import '../widgets/bottom_bar.dart';
@@ -316,6 +319,71 @@ class SettingsPage extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 14),
+
+              // -------- 诊断日志 --------
+              SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Title(
+                      icon: Icons.bug_report_outlined,
+                      title: '诊断日志',
+                      subtitle: '排查双卡 / 频段 / 测速异常时导出给开发者',
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('详细日志'),
+                      subtitle: const Text('额外记录每次链路快照与原生诊断，便于定位问题'),
+                      value: settings.verboseLog,
+                      onChanged: (v) async {
+                        AppLog.setVerbose(v);
+                        await state.updateSettings((s) => s.verboseLog = v);
+                        if (v) {
+                          await state.logDiagnostics(reason: 'verbose-on');
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.notes_rounded,
+                          size: 16,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '本次会话已记录 ${AppLog.lineCount} 行',
+                            style: text.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => state.clearLogs(),
+                          child: const Text('清空'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => _exportLogs(context, state),
+                        icon: const Icon(Icons.ios_share_rounded, size: 18),
+                        label: const Text('导出日志'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 48),
+                          shape: const StadiumBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 22),
               // 页面最底部的版本水印：数值直接来自安装包
               Center(
@@ -345,6 +413,23 @@ class SettingsPage extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _exportLogs(BuildContext context, AppState state) async {
+    try {
+      final file = await state.exportLogs();
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'text/plain')],
+          text: 'Flutter 网测 · 运行日志',
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：$e')),
+      );
+    }
   }
 }
 

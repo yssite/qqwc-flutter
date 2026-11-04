@@ -25,6 +25,7 @@ class AppSettings {
     this.model = 'Android',
     this.autoLocate = true,
     this.permissionsAsked = false,
+    this.verboseLog = false,
   });
 
   bool autoMatch;
@@ -45,6 +46,9 @@ class AppSettings {
   /// 是否已经弹过权限说明，避免每次启动都打扰
   bool permissionsAsked;
 
+  /// 详细日志：额外记录每次链路快照、原生诊断与采样明细
+  bool verboseLog;
+
   Map<String, dynamic> toJson() => {
         'autoMatch': autoMatch,
         'province': province,
@@ -59,6 +63,7 @@ class AppSettings {
         'model': model,
         'autoLocate': autoLocate,
         'permissionsAsked': permissionsAsked,
+        'verboseLog': verboseLog,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -75,6 +80,7 @@ class AppSettings {
         model: '${j['model'] ?? 'Android'}',
         autoLocate: j['autoLocate'] as bool? ?? true,
         permissionsAsked: j['permissionsAsked'] as bool? ?? false,
+        verboseLog: j['verboseLog'] as bool? ?? false,
       );
 }
 
