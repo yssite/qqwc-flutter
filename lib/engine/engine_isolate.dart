@@ -604,7 +604,8 @@ Future<_TransferResult> _transfer({
   }
 
   stop.value = true;
-  for (final s in sockets) {
+  // 复制一份再遍历：worker 在 finally 里会把自己从 sockets 摘掉
+  for (final s in List<Socket>.of(sockets)) {
     try {
       s.destroy();
     } catch (_) {}
@@ -630,35 +631,56 @@ Future<void> _downloadWorker({
   required _StopFlag stop,
   required List<Socket> sockets,
 }) async {
-  Socket? socket;
-  try {
-    socket = await Socket.connect(host, port, timeout: const Duration(seconds: 4));
-    socket.setOption(SocketOption.tcpNoDelay, true);
-    sockets.add(socket);
-    socket.write('GET $path HTTP/1.1\r\n'
-        'Accept: */*\r\n'
-        'Connection: close\r\n'
-        'User-Agent: ${Prot.uaDownload}\r\n'
-        'Host: ${hostHeader(host)}:$port\r\n\r\n');
-    unawaited(socket.flush().catchError((_) {}));
-    final done = Completer<void>();
-    socket.listen(
-      (data) => counter.add(data.length),
-      onDone: () {
-        if (!done.isCompleted) done.complete();
-      },
-      onError: (_) {
-        if (!done.isCompleted) done.complete();
-      },
-      cancelOnError: true,
-    );
-    await done.future;
-  } catch (_) {
-    // 单连接失败不影响其它连接
-  } finally {
+  // 单条连接可能被服务端提前关闭 / 弱网重置：没到时长就重连，
+  // 否则并发数会越跑越少，统计口径不变就会低估速率。
+  var attempt = 0;
+  while (!stop.value) {
+    Socket? socket;
     try {
-      socket?.destroy();
-    } catch (_) {}
+      socket = await Socket.connect(
+        host,
+        port,
+        timeout: const Duration(seconds: 4),
+      );
+      attempt = 0;
+      socket.setOption(SocketOption.tcpNoDelay, true);
+      sockets.add(socket);
+      socket.write('GET $path HTTP/1.1\r\n'
+          'Accept: */*\r\n'
+          'Connection: close\r\n'
+          'User-Agent: ${Prot.uaDownload}\r\n'
+          'Host: ${hostHeader(host)}:$port\r\n\r\n');
+      unawaited(socket.flush().catchError((_) {}));
+      final done = Completer<void>();
+      socket.listen(
+        (data) => counter.add(data.length),
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        onError: (_) {
+          if (!done.isCompleted) done.complete();
+        },
+        cancelOnError: true,
+      );
+      await done.future;
+    } catch (_) {
+      attempt++;
+      // 连不上时退避一下，别把 CPU 打满
+      if (!stop.value && attempt > 0) {
+        await Future<void>.delayed(
+          Duration(milliseconds: math.min(200 * attempt, 1500)),
+        );
+      }
+    } finally {
+      sockets.remove(socket);
+      try {
+        socket?.destroy();
+      } catch (_) {}
+    }
+    if (!stop.value) {
+      // 连接正常结束（服务端关闭或已下满文件）：立刻重连继续压测
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   }
 }
 
@@ -672,50 +694,70 @@ Future<void> _uploadWorker({
   required Uint8List block,
   required int seed,
 }) async {
-  Socket? socket;
-  try {
-    socket = await Socket.connect(host, port, timeout: const Duration(seconds: 4));
-    socket.setOption(SocketOption.tcpNoDelay, true);
-    sockets.add(socket);
-    final filename = 'SPEED_${nowSecs()}_${seed % 1000}';
-    socket.write('POST ${Prot.uploadPath} HTTP/1.1\r\n'
-        'Connection: close\r\n'
-        'Cache-Control: no-cache\r\n'
-        'Charset: UTF-8\r\n'
-        'Key: $uuid\r\n'
-        'Content-Type: multipart/form-data;boundary=00content0boundary00\r\n'
-        'User-Agent: ${Prot.uaUpload}\r\n'
-        'Host: ${hostHeader(host)}:$port\r\n'
-        'Accept-Encoding: gzip\r\n'
-        'Content-Length: ${Prot.uploadContentLength}\r\n\r\n'
-        '--00content0boundary00\r\n'
-        'Content-Disposition: form-data; name="upload";filename="$filename"\r\n\r\n');
-    var pending = 0;
-    var tick = 0;
-    while (!stop.value) {
-      socket.add(block);
-      pending += block.length;
-      if (pending >= 256 * 1024) {
-        await socket.flush();
-        counter.add(pending);
-        pending = 0;
-        if (++tick % 4 == 0) {
-          // 让出事件循环，保证取消指令能被尽快处理
-          await Future<void>.delayed(Duration.zero);
+  // 上行同理：连接被服务端断开就重连，避免并发数中途缩水
+  var attempt = 0;
+  while (!stop.value) {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        host,
+        port,
+        timeout: const Duration(seconds: 4),
+      );
+      attempt = 0;
+      socket.setOption(SocketOption.tcpNoDelay, true);
+      sockets.add(socket);
+      final filename = 'SPEED_${nowSecs()}_${seed % 1000}';
+      socket.write('POST ${Prot.uploadPath} HTTP/1.1\r\n'
+          'Connection: close\r\n'
+          'Cache-Control: no-cache\r\n'
+          'Charset: UTF-8\r\n'
+          'Key: $uuid\r\n'
+          'Content-Type: multipart/form-data;boundary=00content0boundary00\r\n'
+          'User-Agent: ${Prot.uaUpload}\r\n'
+          'Host: ${hostHeader(host)}:$port\r\n'
+          'Accept-Encoding: gzip\r\n'
+          'Content-Length: ${Prot.uploadContentLength}\r\n\r\n'
+          '--00content0boundary00\r\n'
+          'Content-Disposition: form-data; name="upload";filename="$filename"\r\n\r\n');
+      var pending = 0;
+      var tick = 0;
+      while (!stop.value) {
+        socket.add(block);
+        pending += block.length;
+        if (pending >= 256 * 1024) {
+          await socket.flush();
+          counter.add(pending);
+          pending = 0;
+          if (++tick % 4 == 0) {
+            // 让出事件循环，保证取消指令能被尽快处理
+            await Future<void>.delayed(Duration.zero);
+          }
         }
       }
-      if (stop.value) break;
+      if (pending > 0) {
+        await socket
+            .flush()
+            .timeout(const Duration(milliseconds: 400), onTimeout: () {});
+        counter.add(pending);
+      }
+    } catch (_) {
+      // 服务端提前断开：丢弃这轮缓冲，重连继续
+      attempt++;
+      if (!stop.value) {
+        await Future<void>.delayed(
+          Duration(milliseconds: math.min(200 * attempt, 1500)),
+        );
+      }
+    } finally {
+      sockets.remove(socket);
+      try {
+        socket?.destroy();
+      } catch (_) {}
     }
-    if (pending > 0) {
-      await socket.flush().timeout(const Duration(milliseconds: 400), onTimeout: () {});
-      counter.add(pending);
+    if (!stop.value) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
     }
-  } catch (_) {
-    // 服务端提前断开：保留已发送字节
-  } finally {
-    try {
-      socket?.destroy();
-    } catch (_) {}
   }
 }
 

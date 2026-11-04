@@ -11,11 +11,13 @@ build/
 # Android
 android/.gradle/
 android/local.properties
+android/key.properties
 android/app/debug/
 android/app/profile/
 android/app/release/
 *.jks
 *.keystore
+.signing/
 
 # 产物
 *.apk

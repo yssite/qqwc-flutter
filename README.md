@@ -64,6 +64,20 @@ $env:PUB_HOSTED_URL='https://pub.flutter-io.cn'
 $env:FLUTTER_STORAGE_BASE_URL='https://storage.flutter-io.cn'
 ```
 
+### release 签名
+
+`android/app/build.gradle.kts` 会读取 `android/key.properties`（已在 `.gitignore` 中）：
+
+```properties
+storeFile=/path/to/release.jks
+storePassword=***
+keyAlias=***
+keyPassword=***
+```
+
+文件不存在时自动回退到 debug 签名，方便在本机或 CI 上跑通构建；**正式分发务必带上自己的 keystore**，
+否则换签名后所有人都得卸载重装。
+
 ## 协议
 
 ```

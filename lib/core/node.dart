@@ -82,12 +82,13 @@ class Node {
         cityid: '',
         geoid: '',
         hostid: v.length > 5 ? '${v[5]}' : '',
-        hostip: '${v[0]}',
-        hostname: '${v[2]}',
-        location: '${v[3]}',
-        oper: ('').isNotEmpty ? '' : guessOper(''),
-        pname: '${v[3]}',
-        port: '${v[1]}',
+        hostip: v.isNotEmpty ? '${v[0]}' : '',
+        hostname: v.length > 2 ? '${v[2]}' : '',
+        // 紧凑格式里没有 location 字段，留空交给 pname 兜底
+        location: '',
+        oper: v.length > 4 ? '${v[4]}' : '',
+        pname: v.length > 3 ? '${v[3]}' : '',
+        port: v.length > 1 ? '${v[1]}' : '65499',
       );
 
   @override
@@ -240,14 +241,18 @@ class NodeRepository {
     required String province,
     required String oper,
   }) {
+    // 用 operLabel（缺失时从节点名反推），避免 oper 字段为空的节点被运营商过滤掉
+    bool matchesOper(Node n) => oper.isEmpty || n.operLabel == oper ||
+        n.operLabel.contains(oper);
+
     var list = nodes
-        .where((n) => n.pname == province && (oper.isEmpty || n.oper == oper))
+        .where((n) => n.pname == province && matchesOper(n))
         .toList();
     if (list.isEmpty) {
       list = nodes.where((n) => n.pname == province).toList();
     }
     if (list.isEmpty) {
-      list = nodes.where((n) => oper.isEmpty || n.oper == oper).toList();
+      list = nodes.where(matchesOper).toList();
     }
     if (list.isEmpty) list = nodes.toList();
     return list;

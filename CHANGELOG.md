@@ -2,6 +2,16 @@
 
 版本号与 Release 一致，APK 见 [Releases](https://github.com/yssite/qqwc-flutter/releases)。
 
+## v1.3.4
+
+- **改用正式签名**：ndroid/key.properties（已 gitignore）读取 release keystore，缺失时回退 debug 签名
+  - 注意：签名变了，从 1.3.3 及更早版本升级需要**先卸载一次**，否则安装器会报「应用未安装」
+- 修复 Node.fromCompact 丢掉运营商字段（oper 恒为空、location 误用 pname），
+  isolate 内的本地候选节点现在能按运营商正确过滤
+- 测速连接断线重连：上下行 worker 在未到时长前会重新建连，弱网下并发数不再中途缩水（避免低估速率）
+- 启动改为「先出壳再灌数据」：
+unApp 立即执行，节点表与设置异步加载，首帧与原生开屏同色无跳变
+
 ## v1.3.3
 
 - 修复启动更新提示条「浅底浅字」看不见的问题（显式指定背景/文字/按钮颜色）
